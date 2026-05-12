@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pōyi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/globals.css" />
+  <link rel="stylesheet" href="css/auth.css" />
+</head>
+<body>
+
+<!-- ── AUTH SCREEN ─────────────────────────────────────────── -->
+<div id="auth-screen">
+  <div class="auth-bg"></div>
+  <div class="auth-card">
+    <div class="auth-brand">
+      <h1 class="auth-logo">pōyi</h1>
+      <p class="auth-tagline">where will you go next?</p>
+    </div>
+
+    <button class="auth-google-btn" id="google-signin-btn">
+      <svg width="18" height="18" viewBox="0 0 18 18">
+        <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
+        <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+        <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/>
+        <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z"/>
+      </svg>
+      Continue with Google
+    </button>
+
+    <div class="auth-divider"><span>or</span></div>
+
+    <form id="auth-form">
+      <div id="auth-name-field" class="auth-field" style="display:none">
+        <label>Your name</label>
+        <input type="text" id="auth-name" placeholder="Sofia Lane" />
+      </div>
+      <div class="auth-field">
+        <label>Email</label>
+        <input type="email" id="auth-email" placeholder="you@example.com" required />
+      </div>
+      <div class="auth-field">
+        <label>Password</label>
+        <input type="password" id="auth-password" placeholder="••••••••" required minlength="6" />
+      </div>
+      <div id="auth-error" class="auth-error" style="display:none"></div>
+      <button type="submit" class="auth-submit-btn" id="auth-submit">Sign in</button>
+    </form>
+
+    <p class="auth-switch">
+      Don't have an account?
+      <button type="button" id="auth-mode-toggle">Join pōyi</button>
+    </p>
+  </div>
+</div>
+
+<!-- ── MAIN APP ─────────────────────────────────────────────── -->
+<div id="app-shell" style="display:none">
+  <!-- Sidebar -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-logo">pōyi</div>
+    <div class="sidebar-nav">
+      <a href="#" class="sidebar-item active" data-page="discover"  title="Discover">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><polygon points="16.24,7.76 14.12,14.12 7.76,16.24 9.88,9.88"/></svg>
+      </a>
+      <a href="#" class="sidebar-item" data-page="notifications" title="Notifications" id="notif-nav">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span class="sidebar-badge" id="notif-badge" style="display:none">0</span>
+      </a>
+      <a href="#" class="sidebar-item" data-page="profile" title="Profile">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </a>
+      <a href="#" class="sidebar-item" data-page="boards" title="My Boards">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>
+      </a>
+    </div>
+    <div class="sidebar-bottom">
+      <button class="sidebar-item" id="signout-btn" title="Sign out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
+      <div class="sidebar-avatar" id="sidebar-avatar" data-page="profile"></div>
+    </div>
+  </nav>
+
+  <!-- Page container -->
+  <main class="app-main" id="app-main"></main>
+</div>
+
+<!-- ── MODAL ROOT ───────────────────────────────────────────── -->
+<div id="modal-root"></div>
+
+<!-- Firebase SDK (modular via CDN) -->
+<script type="module">
+  import { initializeApp }                        from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+  import { getAuth, GoogleAuthProvider, signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged }
+    from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+  import { getFirestore }                         from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+  // ── CONFIG — replace with your Firebase project values ──────
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyARAff508ndy2fRximmqi3tkZ4z6R5choM",
+  authDomain: "poyi-app.firebaseapp.com",
+  projectId: "poyi-app",
+  storageBucket: "poyi-app.firebasestorage.app",
+  messagingSenderId: "261601199996",
+  appId: "1:261601199996:web:be004e8724b57ed48a86f9",
+  measurementId: "G-YM32W93Y6M"
+};
+  // ────────────────────────────────────────────────────────────
+
+  const app  = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db   = getFirestore(app);
+  const googleProvider = new GoogleAuthProvider();
+
+  // Expose globally so other JS modules can use them
+  window.firebaseAuth = auth;
+  window.firebaseDb   = db;
+  window.GoogleAuthProvider = GoogleAuthProvider;
+  window.firebaseSignOut    = () => signOut(auth);
+  window.googleProvider     = googleProvider;
+  window.signInWithPopup    = signInWithPopup;
+  window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+  window.signInWithEmailAndPassword     = signInWithEmailAndPassword;
+
+  // Auth state observer — gates the whole app
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      window.currentUser = user;
+      document.getElementById('auth-screen').style.display = 'none';
+      document.getElementById('app-shell').style.display   = 'flex';
+      window.App.onSignedIn(user);
+    } else {
+      window.currentUser = null;
+      document.getElementById('auth-screen').style.display = 'flex';
+      document.getElementById('app-shell').style.display   = 'none';
+    }
+  });
+</script>
+
+<!-- App modules -->
+<script src="js/firestore.js"></script>
+<script src="js/unsplash.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/pages/discover.js"></script>
+<script src="js/pages/notifications.js"></script>
+<script src="js/pages/profile.js"></script>
+<script src="js/pages/boards.js"></script>
+<script src="js/pages/board-detail.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>
