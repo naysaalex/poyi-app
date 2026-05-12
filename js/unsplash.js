@@ -2,7 +2,7 @@
 // Unsplash API wrapper. Set UNSPLASH_KEY below or leave blank to use demo images.
 // Free key: https://unsplash.com/developers (50 req/hr demo, 5000/hr with key)
 
-const UNSPLASH_KEY = ''; // <-- paste your Unsplash Access Key here
+const UNSPLASH_KEY = '2n5X3aV_0EEWQyU_fdWDFE3rkcNdyyO6QiP3NRD5PG8'; // <-- paste your Unsplash Access Key here
 
 const SEARCH_QUERIES = {
   all: 'travel destinations scenic', food: 'local food cuisine travel',
