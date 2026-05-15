@@ -42,7 +42,7 @@
   --ease: cubic-bezier(0.4,0,0.2,1);
 }
 
-html, body { height: 100%; font-family: var(--font-body); background: var(--cream); color: var(--ink); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; overflow: hidden; }
+html, body { height: 100%; font-family: var(--font-body); background: var(--cream); color: var(--ink); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; overflow: hidden; } /* overflow:hidden kept here — scrolling handled per page content area */
 
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -50,7 +50,39 @@ html, body { height: 100%; font-family: var(--font-body); background: var(--crea
 
 /* App shell */
 #app-shell { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
+/* app-main fills the remaining width and allows its children to scroll internally */
 .app-main  { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+
+/* ── Scrollable content areas ─────────────────────────────────────────────────
+   Each page renders a flex column. The header/toolbar stays fixed at the top
+   and the content area below it gets overflow-y: auto so it scrolls.
+   Any element with class .scrollable, or common content wrappers, scroll freely.
+──────────────────────────────────────────────────────────────────────────────── */
+.scrollable           { overflow-y: auto; flex: 1; }
+
+/* Discover feed */
+.discover-feed        { overflow-y: auto; }
+
+/* Notifications list */
+.notifs-list          { overflow-y: auto; flex: 1; }
+
+/* Profile content (boards grid, friends list, settings) */
+.profile-content      { overflow-y: auto; flex: 1; }
+
+/* Boards list page */
+.boards-list          { overflow-y: auto; flex: 1; }
+
+/* Board detail — vision grid, places list, itinerary list, settings */
+.vbt-grid             { overflow-y: auto; flex: 1; }
+.pt-list              { overflow-y: auto; flex: 1; }
+.itin-list            { overflow-y: auto; flex: 1; }
+.bst                  { overflow-y: auto; flex: 1; }
+
+/* Modal body */
+.modal-body           { overflow-y: auto; }
+
+/* Generic catch-all: any direct child of app-main that fills height */
+.app-main > div       { max-height: 100vh; }
 
 /* Sidebar */
 .sidebar {
