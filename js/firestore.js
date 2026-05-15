@@ -32,6 +32,18 @@ const FS = {
     await f.updateDoc(f.doc(this.db, 'users', uid), { ...data, updatedAt: f.serverTimestamp() });
   },
 
+  async checkHandleAvailable(handle) {
+    // Returns true if the handle is free, false if already taken
+    const f = await this._f();
+    const q = f.query(
+      f.collection(this.db, 'users'),
+      f.where('handle', '==', handle),
+      f.limit(1)
+    );
+    const snap = await f.getDocs(q);
+    return snap.empty; // empty = available
+  },
+
   async searchUsers(term) {
     const f = await this._f();
     const q = f.query(
