@@ -140,9 +140,11 @@
         usernameValid = available;
         setUsernameState(available ? 'available' : 'taken', '');
       } catch (err) {
-        console.warn('Username check failed:', err);
-        usernameValid = true;
-        setUsernameState('idle', 'Could not verify — will check on submit');
+        console.warn('Username check failed:', err.code, err.message);
+        // If Firestore rejects due to permissions, the check still
+        // runs again on submit — mark as needing recheck but don't block typing
+        usernameValid = false;
+        setUsernameState('idle', 'Tap Create account to verify username');
       }
     }, 500);
   });
