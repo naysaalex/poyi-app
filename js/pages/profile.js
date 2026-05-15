@@ -2,21 +2,32 @@
 window.ProfilePage = {
   unsubs: [],
   activeTab: 'boards',
+  view: 'profile', // 'profile' | 'settings'
 
   destroy() { this.unsubs.forEach(u => u()); this.unsubs = []; },
 
   render() {
-    const el   = document.createElement('div');
+    const el = document.createElement('div');
     el.className = 'profile-page';
-    const user = window.currentProfile || {};
+    el.id = 'profile-page-root';
+    if (this.view === 'settings') {
+      this._renderSettingsView(el);
+    } else {
+      this._renderProfileView(el);
+    }
+    return el;
+  },
 
+  _renderProfileView(el) {
+    const user = window.currentProfile || {};
     const initials = UI.initials(user.displayName);
+
     el.innerHTML = `
       <div class="profile-hero">
-        <div>
+        <div class="profile-avatar-wrap">
           ${user.photoURL
-            ? `<img src="${user.photoURL}" class="profile-avatar-img" alt="">`
-            : `<div class="profile-avatar-initials">${initials}</div>`}
+            ? `<img src="${user.photoURL}" class="profile-avatar-img profile-avatar-clickable" id="profile-avatar-click" alt="" title="Open settings">`
+            : `<div class="profile-avatar-initials profile-avatar-clickable" id="profile-avatar-click" title="Open settings">${initials}</div>`}
         </div>
         <div class="profile-info">
           <h1 class="profile-name">${user.displayName || 'Your Name'}</h1>
@@ -28,46 +39,128 @@ window.ProfilePage = {
           </div>
           ${UI.privacyBadge(user.isPublic ? 'public' : 'private')}
         </div>
+        <button class="profile-settings-btn" id="profile-gear-btn" title="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
       </div>
+
       <div class="profile-tabs">
-        <button class="profile-tab active" data-tab="boards">Boards</button>
-        <button class="profile-tab" data-tab="friends">Friends</button>
-        <button class="profile-tab" data-tab="settings">Settings</button>
+        <button class="profile-tab ${this.activeTab==='boards'?'active':''}" data-tab="boards">Boards</button>
+        <button class="profile-tab ${this.activeTab==='friends'?'active':''}" data-tab="friends">Friends</button>
       </div>
       <div class="profile-content" id="profile-content"></div>`;
 
-    const content = el.querySelector('#profile-content');
+    const openSettings = () => {
+      this.view = 'settings';
+      const root = document.getElementById('profile-page-root');
+      root.innerHTML = '';
+      this._renderSettingsView(root);
+    };
 
-    // Tab switching
+    el.querySelector('#profile-gear-btn').onclick = openSettings;
+    el.querySelector('#profile-avatar-click').onclick = openSettings;
+
     el.querySelectorAll('.profile-tab').forEach(btn => {
       btn.onclick = () => {
+        this.activeTab = btn.dataset.tab;
         el.querySelectorAll('.profile-tab').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        this.renderTab(btn.dataset.tab, content);
+        this.renderTab(btn.dataset.tab, el.querySelector('#profile-content'));
       };
     });
 
-    // Live board count
     const boardUnsub = window.DB.subscribeToUserBoards(window.currentUser.uid, boards => {
-      el.querySelector('#board-count').textContent = boards.length;
+      const c = document.getElementById('board-count');
+      if (c) c.textContent = boards.length;
     });
     this.unsubs.push(boardUnsub);
 
-    // Live profile for friend count
     const profUnsub = window.DB.subscribeToUser(window.currentUser.uid, prof => {
-      if (prof) el.querySelector('#friend-count').textContent = prof.friendCount || 0;
+      const c = document.getElementById('friend-count');
+      if (c && prof) c.textContent = prof.friendCount || 0;
     });
     this.unsubs.push(profUnsub);
 
-    this.renderTab('boards', content);
-    return el;
+    this.renderTab(this.activeTab, el.querySelector('#profile-content'));
+  },
+
+  _renderSettingsView(el) {
+    const profile = window.currentProfile || {};
+    let isPublic = profile.isPublic ?? true;
+
+    el.innerHTML = `
+      <div class="settings-header">
+        <button class="settings-back-btn" id="settings-back-btn" title="Back to profile">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+        <h1 class="settings-title">Settings</h1>
+      </div>
+      <div class="profile-content" style="padding-top:8px">
+        <div class="settings-section">
+          <div class="field"><label>Display name</label><input id="s-name" value="${profile.displayName || ''}" /></div>
+          <div class="field">
+            <label>Handle</label>
+            <div style="display:flex;align-items:center;border:1px solid var(--ink-20);border-radius:12px;overflow:hidden;background:var(--white)">
+              <span style="padding:10px 0 10px 14px;color:var(--ink-40)">@</span>
+              <input id="s-handle" value="${profile.handle || ''}" style="border:none;padding-left:4px" />
+            </div>
+          </div>
+          <div class="field">
+            <label>Bio</label>
+            <textarea id="s-bio" rows="3" placeholder="Tell the world where you've been...">${profile.bio || ''}</textarea>
+          </div>
+          <div class="field">
+            <label>Account visibility</label>
+            <div class="toggle-wrap" id="s-vis-toggle">
+              <span id="s-vis-label" style="font-size:13px;color:var(--ink-60)">${isPublic ? 'Public' : 'Private'}</span>
+              <button class="toggle ${isPublic ? 'on' : ''}" id="s-vis-btn"><span class="toggle-thumb"></span></button>
+            </div>
+            <p class="hint" id="s-vis-hint">${isPublic ? 'Anyone can view your profile.' : 'Only friends can see your boards.'}</p>
+          </div>
+          <button class="btn btn-clay btn-md btn-full" id="save-settings-btn">Save changes</button>
+        </div>
+      </div>`;
+
+    el.querySelector('#settings-back-btn').onclick = () => {
+      this.view = 'profile';
+      el.innerHTML = '';
+      this._renderProfileView(el);
+    };
+
+    const visBtn   = el.querySelector('#s-vis-btn');
+    const visLabel = el.querySelector('#s-vis-label');
+    const visHint  = el.querySelector('#s-vis-hint');
+    el.querySelector('#s-vis-toggle').onclick = () => {
+      isPublic = !isPublic;
+      visBtn.classList.toggle('on', isPublic);
+      visLabel.textContent = isPublic ? 'Public'  : 'Private';
+      visHint.textContent  = isPublic ? 'Anyone can view your profile.' : 'Only friends can see your boards.';
+    };
+
+    el.querySelector('#save-settings-btn').onclick = async () => {
+      const btn = el.querySelector('#save-settings-btn');
+      btn.textContent = 'Saving...'; btn.disabled = true;
+      await window.DB.updateUserProfile(window.currentUser.uid, {
+        displayName: el.querySelector('#s-name').value.trim(),
+        handle:      el.querySelector('#s-handle').value.toLowerCase().replace(/[^a-z0-9_.]/g,''),
+        bio:         el.querySelector('#s-bio').value.trim(),
+        isPublic,
+      });
+      window.currentProfile = { ...window.currentProfile, isPublic };
+      btn.textContent = '✓ Saved!';
+      setTimeout(() => { btn.textContent = 'Save changes'; btn.disabled = false; }, 2000);
+    };
   },
 
   renderTab(tab, container) {
     container.innerHTML = '';
-    if (tab === 'boards')   this.renderBoards(container);
-    if (tab === 'friends')  this.renderFriends(container);
-    if (tab === 'settings') this.renderSettings(container);
+    if (tab === 'boards')  this.renderBoards(container);
+    if (tab === 'friends') this.renderFriends(container);
   },
 
   renderBoards(container) {
@@ -86,6 +179,7 @@ window.ProfilePage = {
 
     const unsub = window.DB.subscribeToUserBoards(window.currentUser.uid, boards => {
       const grid = container.querySelector('#boards-grid');
+      if (!grid) return;
       grid.innerHTML = '';
       boards.forEach(board => {
         const card = document.createElement('div');
@@ -101,7 +195,6 @@ window.ProfilePage = {
         card.onclick = () => window.App.navigate('board-detail', { boardId: board.id });
         grid.appendChild(card);
       });
-      // Add new trip card
       const newCard = document.createElement('button');
       newCard.className = 'board-card-new';
       newCard.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>New Trip</span>`;
@@ -131,8 +224,7 @@ window.ProfilePage = {
       const resultsEl = container.querySelector('#friend-results');
       resultsEl.innerHTML = '<p class="section-label" style="margin-bottom:8px">Results</p>';
       results.filter(u => u.uid !== window.currentUser.uid).forEach(u => {
-        const row = this.friendRow(u, 'add');
-        resultsEl.appendChild(row);
+        resultsEl.appendChild(this.friendRow(u, 'add'));
       });
     };
 
@@ -178,54 +270,5 @@ window.ProfilePage = {
       actionEl.innerHTML = '<span class="friends-tag">Friends</span>';
     }
     return row;
-  },
-
-  renderSettings(container) {
-    const profile = window.currentProfile || {};
-    container.innerHTML = `
-      <div class="settings-section">
-        <div class="field"><label>Display name</label><input id="s-name" value="${profile.displayName || ''}" /></div>
-        <div class="field"><label>Handle</label>
-          <div style="display:flex;align-items:center;border:1px solid var(--ink-20);border-radius:12px;overflow:hidden;background:var(--white)">
-            <span style="padding:10px 0 10px 14px;color:var(--ink-40)">@</span>
-            <input id="s-handle" value="${profile.handle || ''}" style="border:none;padding-left:4px" />
-          </div>
-        </div>
-        <div class="field"><label>Bio</label><textarea id="s-bio" rows="3" placeholder="Tell the world where you've been...">${profile.bio || ''}</textarea></div>
-        <div class="field">
-          <label>Account visibility</label>
-          <div class="toggle-wrap" id="s-vis-toggle">
-            <span id="s-vis-label" style="font-size:13px;color:var(--ink-60)">${profile.isPublic ? 'Public' : 'Private'}</span>
-            <button class="toggle ${profile.isPublic ? 'on' : ''}" id="s-vis-btn"><span class="toggle-thumb"></span></button>
-          </div>
-          <p class="hint" id="s-vis-hint">${profile.isPublic ? 'Anyone can view your profile.' : 'Only friends can see your boards.'}</p>
-        </div>
-        <button class="btn btn-clay btn-md btn-full" id="save-settings-btn">Save changes</button>
-      </div>`;
-
-    let isPublic = profile.isPublic ?? true;
-    const visBtn   = container.querySelector('#s-vis-btn');
-    const visLabel = container.querySelector('#s-vis-label');
-    const visHint  = container.querySelector('#s-vis-hint');
-
-    container.querySelector('#s-vis-toggle').onclick = () => {
-      isPublic = !isPublic;
-      visBtn.classList.toggle('on', isPublic);
-      visLabel.textContent = isPublic ? 'Public' : 'Private';
-      visHint.textContent  = isPublic ? 'Anyone can view your profile.' : 'Only friends can see your boards.';
-    };
-
-    container.querySelector('#save-settings-btn').onclick = async () => {
-      const btn = container.querySelector('#save-settings-btn');
-      btn.textContent = 'Saving...'; btn.disabled = true;
-      await window.DB.updateUserProfile(window.currentUser.uid, {
-        displayName: container.querySelector('#s-name').value.trim(),
-        handle:      container.querySelector('#s-handle').value.toLowerCase().replace(/[^a-z0-9_.]/g,''),
-        bio:         container.querySelector('#s-bio').value.trim(),
-        isPublic,
-      });
-      btn.textContent = '✓ Saved!';
-      setTimeout(() => { btn.textContent = 'Save changes'; btn.disabled = false; }, 2000);
-    };
   },
 };
