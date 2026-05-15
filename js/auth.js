@@ -242,10 +242,12 @@
           usernameValid = true;
           setUsernameState('available', '');
         } catch (err) {
-          console.warn('Final username check failed:', err);
-          // If Firestore is unreachable let the signup proceed;
-          // a duplicate handle would just overwrite with { merge: true }
-          // which is acceptable as a rare fallback.
+          console.warn('Final username check failed:', err.code, err.message);
+          // Firestore rejected the check (permissions or network).
+          // Block signup — we cannot guarantee uniqueness without the check.
+          showError('Could not verify username availability. Please check your connection and try again.');
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Create account'; }
+          return;
         }
       }
 
