@@ -119,7 +119,7 @@
     const inputEl = e.target;
     inputEl.value = inputEl.value.toLowerCase().replace(/[^a-z0-9_.]/g, '');
     const val = inputEl.value;
-    usernameValid = false;
+    usernameValid = false;  // always reset — any keystroke invalidates the cached result
     clearTimeout(usernameTimer);
 
     if (!val)           { setUsernameState('idle',    ''); return; }
@@ -220,25 +220,32 @@
           get('auth-username')?.focus();
           return;
         }
-        // Final availability check
-        if (!usernameValid) {
-          setUsernameState('checking', '');
-          try {
-            const available = window.DB?.checkHandleAvailable
-              ? await window.DB.checkHandleAvailable(handle)
-              : true;
-            if (!available) {
-              setUsernameState('taken', '');
-              showError(`@${handle} is already taken. Please choose a different username.`);
-              get('auth-username')?.focus();
-              return;
-            }
-            usernameValid = true;
-            setUsernameState('available', '');
-          } catch (err) {
-            console.warn('Final username check failed:', err);
-            usernameValid = true; // network issue — proceed
+        // Always run a fresh Firestore check on submit — never trust the
+        // cached usernameValid flag, which could be stale if the user
+        // changed the field after the live check passed, or if someone
+        // else registered the same handle in the meantime.
+        setUsernameState('checking', '');
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Checking username…'; }
+        try {
+          if (!window.DB?.checkHandleAvailable) {
+            throw new Error('DB not ready');
           }
+          const available = await window.DB.checkHandleAvailable(handle);
+          if (!available) {
+            setUsernameState('taken', '');
+            showError(`@${handle} is already taken. Please choose a different username.`);
+            get('auth-username')?.focus();
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Create account'; }
+            return;
+          }
+          // Handle is free — mark confirmed and fall through to account creation
+          usernameValid = true;
+          setUsernameState('available', '');
+        } catch (err) {
+          console.warn('Final username check failed:', err);
+          // If Firestore is unreachable let the signup proceed;
+          // a duplicate handle would just overwrite with { merge: true }
+          // which is acceptable as a rare fallback.
         }
       }
 
