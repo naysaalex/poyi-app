@@ -27,6 +27,20 @@
 
   modeToggle.onclick = () => setMode(mode === 'signin' ? 'signup' : 'signin');
 
+  // Password visibility toggle
+  const toggleBtn  = document.getElementById('toggle-password');
+  const passwordEl = document.getElementById('auth-password');
+  const eyeOpen    = document.getElementById('eye-open');
+  const eyeClosed  = document.getElementById('eye-closed');
+
+  toggleBtn.onclick = () => {
+    const isHidden = passwordEl.type === 'password';
+    passwordEl.type         = isHidden ? 'text'     : 'password';
+    eyeOpen.style.display   = isHidden ? 'none'     : '';
+    eyeClosed.style.display = isHidden ? ''         : 'none';
+    toggleBtn.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+  };
+
   googleBtn.onclick = async () => {
     try {
       await window.signInWithPopup(window.firebaseAuth, window.googleProvider);
