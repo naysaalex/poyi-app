@@ -22,12 +22,13 @@
     // ── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────
     // Firebase Console → Project Settings → Your apps → Web app → Config
     const firebaseConfig = {
-      apiKey:            "YOUR_API_KEY",
-      authDomain:        "YOUR_AUTH_DOMAIN",
-      projectId:         "YOUR_PROJECT_ID",
-      storageBucket:     "YOUR_STORAGE_BUCKET",
-      messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-      appId:             "YOUR_APP_ID",
+      apiKey:            "AIzaSyARAff508ndy2fRximmqi3tkZ4z6R5choM",
+      authDomain:        "poyi-app.firebaseapp.com",
+      projectId:         "poyi-app",
+      storageBucket:     "poyi-app.firebasestorage.app",
+      messagingSenderId: "261601199996",
+      appId:             "1:261601199996:web:be004e8724b57ed48a86f9",
+      measurementId:     "G-YM32W93Y6M",
     };
     // ─────────────────────────────────────────────────────────────
 
@@ -40,13 +41,7 @@
     window.googleProvider  = new firebase.auth.GoogleAuthProvider();
     window.firebaseSignOut = () => firebase.auth().signOut();
 
-    // Wrap compat API to match the function signatures auth.js expects
-    window.signInWithPopup = (auth, provider) =>
-      auth.signInWithPopup(provider);
-    window.createUserWithEmailAndPassword = (auth, email, password) =>
-      auth.createUserWithEmailAndPassword(email, password);
-    window.signInWithEmailAndPassword = (auth, email, password) =>
-      auth.signInWithEmailAndPassword(email, password);
+    // auth.js calls firebase.auth() directly — no wrappers needed
 
     // Auth state gate — runs as soon as Firebase resolves the session
     firebase.auth().onAuthStateChanged((user) => {
