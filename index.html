@@ -9,6 +9,59 @@
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/globals.css" />
   <link rel="stylesheet" href="css/auth.css" />
+
+  <!--
+    Firebase compat SDK — loaded in <head> so it is fully available
+    before ANY other script on the page runs. Do NOT change to type="module".
+  -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+  <script>
+    // ── PASTE YOUR FIREBASE CONFIG HERE ─────────────────────────
+    // Firebase Console → Project Settings → Your apps → Web app → Config
+    const firebaseConfig = {
+      apiKey:            "YOUR_API_KEY",
+      authDomain:        "YOUR_AUTH_DOMAIN",
+      projectId:         "YOUR_PROJECT_ID",
+      storageBucket:     "YOUR_STORAGE_BUCKET",
+      messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+      appId:             "YOUR_APP_ID",
+    };
+    // ─────────────────────────────────────────────────────────────
+
+    firebase.initializeApp(firebaseConfig);
+
+    // Expose the services globally — available immediately, synchronously,
+    // before firestore.js / auth.js / app.js run.
+    window.firebaseAuth    = firebase.auth();
+    window.firebaseDb      = firebase.firestore();
+    window.googleProvider  = new firebase.auth.GoogleAuthProvider();
+    window.firebaseSignOut = () => firebase.auth().signOut();
+
+    // Wrap compat API to match the function signatures auth.js expects
+    window.signInWithPopup = (auth, provider) =>
+      auth.signInWithPopup(provider);
+    window.createUserWithEmailAndPassword = (auth, email, password) =>
+      auth.createUserWithEmailAndPassword(email, password);
+    window.signInWithEmailAndPassword = (auth, email, password) =>
+      auth.signInWithEmailAndPassword(email, password);
+
+    // Auth state gate — runs as soon as Firebase resolves the session
+    firebase.auth().onAuthStateChanged((user) => {
+      if (user) {
+        window.currentUser = user;
+        document.getElementById('auth-screen').style.display = 'none';
+        document.getElementById('app-shell').style.display   = 'flex';
+        if (window.App) window.App.onSignedIn(user);
+      } else {
+        window.currentUser = null;
+        document.getElementById('auth-screen').style.display = 'flex';
+        document.getElementById('app-shell').style.display   = 'none';
+      }
+    });
+  </script>
 </head>
 <body>
 
@@ -42,7 +95,8 @@
         <label>Username</label>
         <div class="auth-username-wrap">
           <span class="auth-username-at">@</span>
-          <input type="text" id="auth-username" placeholder="sofialane" autocomplete="off" autocapitalize="none" spellcheck="false" />
+          <input type="text" id="auth-username" placeholder="sofialane"
+                 autocomplete="off" autocapitalize="none" spellcheck="false" />
           <span class="auth-username-status" id="auth-username-status"></span>
         </div>
         <p class="auth-username-hint" id="auth-username-hint">Letters, numbers, underscores and dots only</p>
@@ -81,11 +135,10 @@
 
 <!-- ── MAIN APP ─────────────────────────────────────────────── -->
 <div id="app-shell" style="display:none">
-  <!-- Sidebar -->
   <nav class="sidebar" id="sidebar">
     <div class="sidebar-logo">pōyi</div>
     <div class="sidebar-nav">
-      <a href="#" class="sidebar-item active" data-page="discover"  title="Discover">
+      <a href="#" class="sidebar-item active" data-page="discover" title="Discover">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><polygon points="16.24,7.76 14.12,14.12 7.76,16.24 9.88,9.88"/></svg>
       </a>
       <a href="#" class="sidebar-item" data-page="notifications" title="Notifications" id="notif-nav">
@@ -106,66 +159,16 @@
       <div class="sidebar-avatar" id="sidebar-avatar" data-page="profile"></div>
     </div>
   </nav>
-
-  <!-- Page container -->
   <main class="app-main" id="app-main"></main>
 </div>
 
 <!-- ── MODAL ROOT ───────────────────────────────────────────── -->
 <div id="modal-root"></div>
 
-<!-- Firebase SDK (modular via CDN) -->
-<script type="module">
-  import { initializeApp }                        from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-  import { getAuth, GoogleAuthProvider, signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged }
-    from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-  import { getFirestore }                         from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-
-  // ── CONFIG ──────────────────────────────────────────────────
-  // !! REPLACE ALL 6 VALUES BELOW with your Firebase project config !!
-  // Find them at: Firebase Console → Project Settings → Your apps → Web app
-  // The app will show "auth/api-key-not-valid" if any value is still a placeholder.
-  const firebaseConfig = {
-    apiKey:            "YOUR_API_KEY",            // e.g. "AIzaSyABC123..."
-    authDomain:        "YOUR_AUTH_DOMAIN",        // e.g. "poyi-app.firebaseapp.com"
-    projectId:         "YOUR_PROJECT_ID",         // e.g. "poyi-app"
-    storageBucket:     "YOUR_STORAGE_BUCKET",     // e.g. "poyi-app.appspot.com"
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",// e.g. "123456789012"
-    appId:             "YOUR_APP_ID",             // e.g. "1:123456789012:web:abc..."
-  };
-  // ────────────────────────────────────────────────────────────
-
-  const app  = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db   = getFirestore(app);
-  const googleProvider = new GoogleAuthProvider();
-
-  // Expose globally so other JS modules can use them
-  window.firebaseAuth = auth;
-  window.firebaseDb   = db;
-  window.GoogleAuthProvider = GoogleAuthProvider;
-  window.firebaseSignOut    = () => signOut(auth);
-  window.googleProvider     = googleProvider;
-  window.signInWithPopup    = signInWithPopup;
-  window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
-  window.signInWithEmailAndPassword     = signInWithEmailAndPassword;
-
-  // Auth state observer — gates the whole app
-  onAuthStateChanged(auth, (user) => {
-    if (user) {
-      window.currentUser = user;
-      document.getElementById('auth-screen').style.display = 'none';
-      document.getElementById('app-shell').style.display   = 'flex';
-      window.App.onSignedIn(user);
-    } else {
-      window.currentUser = null;
-      document.getElementById('auth-screen').style.display = 'flex';
-      document.getElementById('app-shell').style.display   = 'none';
-    }
-  });
-</script>
-
-<!-- App modules -->
+<!--
+  App modules — all run after Firebase is fully initialised above.
+  firestore.js uses window.firebaseDb which is already set.
+-->
 <script src="js/firestore.js"></script>
 <script src="js/unsplash.js"></script>
 <script src="js/ui.js"></script>
