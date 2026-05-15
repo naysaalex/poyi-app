@@ -151,3 +151,46 @@
 }
 .auth-username-wrap:has(.input-available) ~ .auth-username-hint { color: var(--leaf); }
 .auth-username-wrap:has(.input-taken)     ~ .auth-username-hint { color: var(--rose); }
+
+/* ── Logout screen ─────────────────────────────────────────── */
+#logout-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ink);
+  position: relative;
+  overflow: hidden;
+  padding: 20px;
+}
+
+.logout-card {
+  text-align: center;
+  animation: scaleIn 0.35s var(--ease) both;
+}
+
+.logout-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(196,149,106,0.12);
+  border: 1.5px solid rgba(196,149,106,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 24px;
+  color: var(--clay);
+  animation: fadeIn 0.5s var(--ease) 0.1s both;
+}
+
+.logout-icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.logout-message {
+  font-size: 15px;
+  color: var(--ink-60);
+  line-height: 1.5;
+  font-family: var(--font-body);
+}
