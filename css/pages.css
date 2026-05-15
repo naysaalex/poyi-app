@@ -252,3 +252,63 @@
 .aim-overlay { position: absolute; inset: 0; background: rgba(28,24,20,0.45); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; color: var(--white); opacity: 0; transition: opacity 0.18s; }
 .aim-img:hover .aim-overlay { opacity: 1; }
 .aim-img.added .aim-overlay { opacity: 1; background: rgba(74,103,65,0.55); }
+
+/* ── Profile settings gear + header ───────────────────────── */
+.profile-settings-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 0.5px solid var(--ink-20);
+  background: var(--white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--ink-60);
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 4px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.profile-settings-btn svg { width: 18px; height: 18px; }
+.profile-settings-btn:hover { background: var(--sand); color: var(--clay); border-color: var(--clay-light); }
+
+/* Clickable avatar hint */
+.profile-avatar-clickable {
+  cursor: pointer;
+  transition: opacity 0.15s, box-shadow 0.15s;
+}
+.profile-avatar-clickable:hover { opacity: 0.85; box-shadow: 0 0 0 3px var(--clay-light); }
+
+/* Settings view header */
+.settings-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px 14px;
+  border-bottom: 0.5px solid var(--ink-10);
+  flex-shrink: 0;
+}
+.settings-back-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 0.5px solid var(--ink-20);
+  background: var(--white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--ink-60);
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.settings-back-btn svg { width: 18px; height: 18px; }
+.settings-back-btn:hover { background: var(--sand); color: var(--ink); }
+.settings-title {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 300;
+  font-size: 26px;
+  color: var(--ink);
+}
