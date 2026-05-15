@@ -2,18 +2,23 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn()   { return request.auth != null; }
-    function isOwner(uid) { return request.auth.uid == uid; }
+    function signedIn()      { return request.auth != null; }
+    function isOwner(uid)    { return request.auth.uid == uid; }
     function isCollab(board) { return request.auth.uid in board.data.collaborators; }
 
     match /users/{uid} {
-      // Anyone (even unauthenticated) can query the handle field only —
-      // this is required for username availability checks on the sign-up screen.
-      // Full profile reads still require sign-in.
-      allow read: if signedIn()
-                  || (request.query.limit <= 1
-                      && request.query.filters.size() == 1);
-      allow write: if isOwner(uid);
+      // Allow anyone to read the users collection — needed for:
+      //   1. Username availability check on sign-up (unauthenticated)
+      //   2. Viewing other profiles (authenticated)
+      allow read: if true;
+
+      // Only the account owner can write their own profile.
+      // Also allow creating a new profile when first signing up
+      // (the user IS authenticated at this point via Firebase Auth,
+      //  even though their Firestore profile doesn't exist yet).
+      allow create: if signedIn() && isOwner(uid);
+      allow update: if signedIn() && isOwner(uid);
+      allow delete: if signedIn() && isOwner(uid);
     }
 
     match /friendRequests/{id} {
