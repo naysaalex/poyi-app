@@ -34,3 +34,39 @@
 .auth-switch { text-align: center; font-size: 13px; color: var(--ink-60); margin-top: 20px; }
 .auth-switch button { background: none; border: none; color: var(--clay-dark); font-weight: 500; cursor: pointer; font-size: 13px; text-decoration: underline; text-decoration-color: rgba(160,120,72,0.4); }
 .auth-switch button:hover { color: var(--clay); }
+
+/* Password visibility toggle */
+.auth-password-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.auth-password-wrap input {
+  width: 100%;
+  padding-right: 44px; /* make room for the icon */
+}
+.auth-password-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-40);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+  transition: color 0.15s;
+  line-height: 0;
+}
+.auth-password-toggle:hover {
+  color: var(--clay);
+}
+.auth-password-toggle svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
