@@ -2,12 +2,17 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn()            { return request.auth != null; }
-    function isOwner(uid)          { return request.auth.uid == uid; }
-    function isCollab(board)       { return request.auth.uid in board.data.collaborators; }
+    function signedIn()   { return request.auth != null; }
+    function isOwner(uid) { return request.auth.uid == uid; }
+    function isCollab(board) { return request.auth.uid in board.data.collaborators; }
 
     match /users/{uid} {
-      allow read:  if signedIn();
+      // Anyone (even unauthenticated) can query the handle field only —
+      // this is required for username availability checks on the sign-up screen.
+      // Full profile reads still require sign-in.
+      allow read: if signedIn()
+                  || (request.query.limit <= 1
+                      && request.query.filters.size() == 1);
       allow write: if isOwner(uid);
     }
 
