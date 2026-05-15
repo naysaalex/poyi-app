@@ -1,12 +1,15 @@
 // js/auth.js
+// Uses Firebase compat SDK loaded globally in index.html
 (function () {
   let mode          = 'signin';
   let usernameValid = false;
   let usernameTimer = null;
 
-  // ── Grab elements — all lookups happen inside functions so a
-  //    missing element never crashes the module at parse time ──
   const get = id => document.getElementById(id);
+
+  // ── Auth instance shorthand ─────────────────────────────────
+  // firebase.auth() is always available — set in index.html <head>
+  const auth = () => firebase.auth();
 
   // ── Friendly error messages ─────────────────────────────────
   function friendlyError(code, currentMode) {
@@ -19,12 +22,12 @@
       'auth/user-disabled':           'This account has been disabled. Please contact support.',
       'auth/email-already-in-use':    'An account with that email already exists. Try signing in instead.',
       'auth/weak-password':           'Password must be at least 6 characters.',
-      'auth/popup-closed-by-user':    'Sign-in window was closed. Please try again.',
-      'auth/popup-blocked':           'Pop-up was blocked by your browser. Please allow pop-ups for this site.',
-      'auth/cancelled-popup-request': 'Sign-in was cancelled. Please try again.',
+      'auth/popup-closed-by-user':    'Sign-in cancelled. Please try again.',
+      'auth/popup-blocked':           'Pop-up blocked. Please allow pop-ups for this site and try again.',
+      'auth/cancelled-popup-request': 'Sign-in cancelled. Please try again.',
       'auth/network-request-failed':  'Network error. Check your connection and try again.',
-      'auth/api-key-not-valid':       'App configuration error. Please contact support.',
-      'auth/unauthorized-domain':     'This domain is not authorised. Please contact support.',
+      'auth/api-key-not-valid':       'Invalid API key — check your Firebase config in index.html.',
+      'auth/unauthorized-domain':     'This domain is not authorised in Firebase — add it under Authentication → Settings → Authorized domains.',
     };
     return map[code] || (currentMode === 'signup'
       ? "Couldn't create your account. Please try again."
@@ -47,7 +50,6 @@
   function setMode(m) {
     mode = m;
     hideError();
-
     const nameField     = get('auth-name-field');
     const usernameField = get('auth-username-field');
     const submitBtn     = get('auth-submit');
@@ -73,22 +75,18 @@
     }
   }
 
-  // ── Username state display ──────────────────────────────────
+  // ── Username availability ───────────────────────────────────
   const HANDLE_RE = /^[a-z0-9_.]{3,20}$/;
 
   function setUsernameState(state, msg) {
     const statusEl = get('auth-username-status');
     const hintEl   = get('auth-username-hint');
     const inputEl  = get('auth-username');
-
-    // Safe — if elements don't exist yet, just return
     if (!statusEl || !hintEl) return;
 
     statusEl.textContent = '';
     statusEl.className   = 'auth-username-status';
     if (inputEl) inputEl.className = '';
-
-    if (msg) hintEl.textContent = msg;
 
     if (state === 'checking') {
       statusEl.textContent = '…';
@@ -108,39 +106,33 @@
       statusEl.textContent = '✕';
       statusEl.classList.add('taken');
       if (inputEl) inputEl.classList.add('input-taken');
-      // msg already set above
+      if (msg) hintEl.textContent = msg;
     } else {
-      // idle — reset hint to default
       if (!msg) hintEl.textContent = 'Letters, numbers, underscores and dots only';
+      else hintEl.textContent = msg;
     }
   }
 
-  // ── Wire up username input live check ──────────────────────
-  //    Done via event delegation so it works even if the input
-  //    is hidden or rendered late.
+  // Username live check — event delegation so it survives any DOM timing
   document.addEventListener('input', e => {
     if (e.target.id !== 'auth-username') return;
-
     const inputEl = e.target;
-    // Strip disallowed chars, force lowercase
     inputEl.value = inputEl.value.toLowerCase().replace(/[^a-z0-9_.]/g, '');
-
     const val = inputEl.value;
     usernameValid = false;
     clearTimeout(usernameTimer);
 
-    if (!val) { setUsernameState('idle', ''); return; }
-    if (val.length < 3)  { setUsernameState('invalid', 'Username must be at least 3 characters'); return; }
-    if (val.length > 20) { setUsernameState('invalid', 'Username must be 20 characters or fewer'); return; }
+    if (!val)           { setUsernameState('idle',    ''); return; }
+    if (val.length < 3) { setUsernameState('invalid', 'Username must be at least 3 characters'); return; }
+    if (val.length > 20){ setUsernameState('invalid', 'Username must be 20 characters or fewer'); return; }
     if (!HANDLE_RE.test(val)) { setUsernameState('invalid', 'Only letters, numbers, underscores and dots allowed'); return; }
 
     setUsernameState('checking', '');
     usernameTimer = setTimeout(async () => {
       try {
-        // Wait for DB to be ready (it loads after auth.js in the page)
         if (!window.DB || !window.DB.checkHandleAvailable) {
           usernameValid = true;
-          setUsernameState('idle', 'Could not verify — will check on sign up');
+          setUsernameState('idle', 'Could not verify — will check on submit');
           return;
         }
         const available = await window.DB.checkHandleAvailable(val);
@@ -148,29 +140,29 @@
         usernameValid = available;
         setUsernameState(available ? 'available' : 'taken', '');
       } catch (err) {
+        console.warn('Username check failed:', err);
         usernameValid = true;
-        setUsernameState('idle', 'Could not verify — will check on sign up');
+        setUsernameState('idle', 'Could not verify — will check on submit');
       }
     }, 500);
   });
 
   // ── Password visibility toggle ──────────────────────────────
   document.addEventListener('click', e => {
-    if (e.target.closest('#toggle-password')) {
-      const inputEl   = get('auth-password');
-      const eyeOpen   = get('eye-open');
-      const eyeClosed = get('eye-closed');
-      const btn       = get('toggle-password');
-      if (!inputEl) return;
-      const isHidden    = inputEl.type === 'password';
-      inputEl.type      = isHidden ? 'text'  : 'password';
-      if (eyeOpen)   eyeOpen.style.display   = isHidden ? 'none' : '';
-      if (eyeClosed) eyeClosed.style.display = isHidden ? ''     : 'none';
-      if (btn)       btn.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
-    }
+    if (!e.target.closest('#toggle-password')) return;
+    const inputEl   = get('auth-password');
+    const eyeOpen   = get('eye-open');
+    const eyeClosed = get('eye-closed');
+    const btn       = get('toggle-password');
+    if (!inputEl) return;
+    const isHidden  = inputEl.type === 'password';
+    inputEl.type    = isHidden ? 'text' : 'password';
+    if (eyeOpen)   eyeOpen.style.display   = isHidden ? 'none' : '';
+    if (eyeClosed) eyeClosed.style.display = isHidden ? ''     : 'none';
+    if (btn)       btn.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
   });
 
-  // ── Mode toggle button ──────────────────────────────────────
+  // ── Mode toggle ─────────────────────────────────────────────
   const modeToggleBtn = get('auth-mode-toggle');
   if (modeToggleBtn) {
     modeToggleBtn.onclick = () => setMode(mode === 'signin' ? 'signup' : 'signin');
@@ -181,11 +173,22 @@
   if (googleBtn) {
     googleBtn.onclick = async () => {
       hideError();
+      googleBtn.disabled = true;
+      googleBtn.textContent = 'Opening…';
       try {
-        await window.signInWithPopup(window.firebaseAuth, window.googleProvider);
-        // onAuthStateChanged in index.html handles the rest
+        const provider = new firebase.auth.GoogleAuthProvider();
+        await firebase.auth().signInWithPopup(provider);
+        // onAuthStateChanged in index.html handles redirect into the app
       } catch (e) {
+        console.error('Google sign-in error:', e.code, e.message);
         showError(friendlyError(e.code || '', 'signin'));
+        googleBtn.disabled = false;
+        googleBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 18 18">
+          <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
+          <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+          <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/>
+          <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z"/>
+        </svg> Continue with Google`;
       }
     };
   }
@@ -197,10 +200,11 @@
       e.preventDefault();
       hideError();
 
-      const email    = (get('auth-email')?.value    || '').trim();
-      const password =  get('auth-password')?.value || '';
-      const submitBtn = get('auth-submit');
+      const email     = (get('auth-email')?.value    || '').trim();
+      const password  =  get('auth-password')?.value || '';
+      const submitBtn =  get('auth-submit');
 
+      // ── Sign-up validations ──────────────────────────────
       if (mode === 'signup') {
         const handle = (get('auth-username')?.value || '').trim();
 
@@ -214,6 +218,7 @@
           get('auth-username')?.focus();
           return;
         }
+        // Final availability check
         if (!usernameValid) {
           setUsernameState('checking', '');
           try {
@@ -221,7 +226,6 @@
               ? await window.DB.checkHandleAvailable(handle)
               : true;
             if (!available) {
-              usernameValid = false;
               setUsernameState('taken', '');
               showError(`@${handle} is already taken. Please choose a different username.`);
               get('auth-username')?.focus();
@@ -230,34 +234,40 @@
             usernameValid = true;
             setUsernameState('available', '');
           } catch (err) {
-            // Network issue — proceed and let server reject if duplicate
-            usernameValid = true;
+            console.warn('Final username check failed:', err);
+            usernameValid = true; // network issue — proceed
           }
         }
       }
 
-      if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Loading...'; }
+      // ── Submit ───────────────────────────────────────────
+      if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Loading…'; }
 
       try {
         if (mode === 'signup') {
           const name   = (get('auth-name')?.value     || '').trim();
           const handle = (get('auth-username')?.value || '').trim();
 
-          const cred = await window.createUserWithEmailAndPassword(
-            window.firebaseAuth, email, password
-          );
+          // 1. Create Firebase Auth account
+          const cred = await firebase.auth()
+            .createUserWithEmailAndPassword(email, password);
 
-          // Create profile — app.js onSignedIn will skip creation since it now exists
+          // 2. Write Firestore profile with chosen handle
           await window.DB.createUserProfile(cred.user.uid, {
             displayName: name || handle,
             handle,
             email,
             photoURL: '',
           });
+          // onAuthStateChanged fires automatically and loads the app
+
         } else {
-          await window.signInWithEmailAndPassword(window.firebaseAuth, email, password);
+          await firebase.auth().signInWithEmailAndPassword(email, password);
+          // onAuthStateChanged fires automatically
         }
+
       } catch (err) {
+        console.error('Auth error:', err.code, err.message);
         showError(friendlyError(err.code || '', mode));
         if (submitBtn) {
           submitBtn.disabled    = false;
