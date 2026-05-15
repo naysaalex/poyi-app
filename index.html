@@ -43,17 +43,40 @@
 
     // auth.js calls firebase.auth() directly — no wrappers needed
 
+    // Track intentional sign-outs so we can show the goodbye screen
+    window._userSignedOut = false;
+    window.firebaseSignOut = () => {
+      window._userSignedOut = true;
+      return firebase.auth().signOut();
+    };
+
     // Auth state gate — runs as soon as Firebase resolves the session
     firebase.auth().onAuthStateChanged((user) => {
+      const authScreen   = document.getElementById('auth-screen');
+      const logoutScreen = document.getElementById('logout-screen');
+      const appShell     = document.getElementById('app-shell');
+
       if (user) {
-        window.currentUser = user;
-        document.getElementById('auth-screen').style.display = 'none';
-        document.getElementById('app-shell').style.display   = 'flex';
+        window.currentUser     = user;
+        window._userSignedOut  = false;
+        authScreen.style.display   = 'none';
+        logoutScreen.style.display = 'none';
+        appShell.style.display     = 'flex';
         if (window.App) window.App.onSignedIn(user);
       } else {
         window.currentUser = null;
-        document.getElementById('auth-screen').style.display = 'flex';
-        document.getElementById('app-shell').style.display   = 'none';
+        appShell.style.display = 'none';
+
+        if (window._userSignedOut) {
+          // Intentional sign-out — show goodbye screen
+          authScreen.style.display   = 'none';
+          logoutScreen.style.display = 'flex';
+          window._userSignedOut = false;
+        } else {
+          // Session expired or first load — go straight to sign-in
+          authScreen.style.display   = 'flex';
+          logoutScreen.style.display = 'none';
+        }
       }
     });
   </script>
@@ -128,6 +151,26 @@
   </div>
 </div>
 
+<!-- ── LOGOUT SCREEN ──────────────────────────────────────────── -->
+<div id="logout-screen" style="display:none">
+  <div class="auth-bg"></div>
+  <div class="auth-card logout-card">
+    <div class="logout-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+        <polyline points="16 17 21 12 16 7"/>
+        <line x1="21" y1="12" x2="9" y2="12"/>
+      </svg>
+    </div>
+    <h1 class="auth-logo" style="margin-bottom:8px">see you soon</h1>
+    <p class="logout-message">You've been signed out successfully.</p>
+    <button class="auth-submit-btn" id="logout-signin-btn" style="margin-top:28px">
+      Sign back in
+    </button>
+    <p class="auth-tagline" style="margin-top:16px;font-size:13px">pōyi — where will you go next?</p>
+  </div>
+</div>
+
 <!-- ── MAIN APP ─────────────────────────────────────────────── -->
 <div id="app-shell" style="display:none">
   <nav class="sidebar" id="sidebar">
@@ -164,6 +207,18 @@
   App modules — all run after Firebase is fully initialised above.
   firestore.js uses window.firebaseDb which is already set.
 -->
+<script>
+  // Wire the logout screen "Sign back in" button
+  document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('logout-signin-btn');
+    if (btn) {
+      btn.onclick = () => {
+        document.getElementById('logout-screen').style.display = 'none';
+        document.getElementById('auth-screen').style.display   = 'flex';
+      };
+    }
+  });
+</script>
 <script src="js/firestore.js"></script>
 <script src="js/unsplash.js"></script>
 <script src="js/ui.js"></script>
