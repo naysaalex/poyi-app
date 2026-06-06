@@ -454,10 +454,12 @@ window.BoardDetailPage = {
     const rebuildToolbar = () => {
       const btns = el.querySelector('#itin-btns');
       btns.innerHTML = '';
-      if (canEdit && days.length === 0) {
+      if (canEdit) {
         const genBtn = document.createElement('button');
         genBtn.className = 'btn btn-clay btn-sm';
-        genBtn.textContent = '✦ Generate Template';
+        genBtn.id = 'itin-gen';
+        genBtn.textContent = days.length === 0 ? '✦ Generate from Places' : '✦ Regenerate';
+        genBtn.title = 'Build itinerary from your saved Places & Maps entries';
         genBtn.onclick = generate;
         btns.appendChild(genBtn);
       }
@@ -576,34 +578,209 @@ window.BoardDetailPage = {
       });
     };
 
-    const generate = () => {
-      const dests   = board.destinations?.length ? board.destinations : ['Destination'];
-      const numDays = board.startDate && board.endDate
-        ? Math.ceil((new Date(board.endDate) - new Date(board.startDate)) / 86400000)
-        : dests.length * 3;
-      const T = {
-        morning:   ['Breakfast at a local café', 'Visit morning market', 'Explore the old town'],
-        midday:    ['Visit main attraction',      'Museum visit',          'Guided tour'],
-        afternoon: ['Afternoon tea break',         'Walking tour',          'Shopping district'],
-        evening:   ['Sunset viewpoint',            'Dinner at local restaurant', 'Night market'],
-      };
-      days = Array.from({ length: Math.min(numDays, 14) }, (_, i) => {
-        const dest = dests[Math.floor(i / Math.ceil(numDays / dests.length))] || dests[0];
-        const date = board.startDate
-          ? new Date(new Date(board.startDate).getTime() + i * 86400000).toISOString().split('T')[0]
-          : null;
-        return {
-          id: `day-${i}`, dayNumber: i + 1, date, location: dest,
-          events: [
-            { id:`e-${i}-0`, time:'8:00 AM',  name: T.morning[i%3],           category:'breakfast' },
-            { id:`e-${i}-1`, time:'11:00 AM', name: T.midday[i%3],             category:'activity'  },
-            { id:`e-${i}-2`, time:'1:00 PM',  name: `Lunch near ${dest}`,      category:'lunch'     },
-            { id:`e-${i}-3`, time:'3:00 PM',  name: T.afternoon[i%3],          category:'activity'  },
-            { id:`e-${i}-4`, time:'7:00 PM',  name: T.evening[i%3],            category:'dinner'    },
-          ],
-        };
+    // ── Smart itinerary generator ────────────────────────────
+    // Reads saved places, weights days by place count per destination,
+    // and schedules real places into real time slots.
+    const generate = async () => {
+      const genBtn = el.querySelector('#itin-gen') || el.querySelector('#itin-gen2');
+      if (genBtn) { genBtn.disabled = true; genBtn.textContent = 'Building your itinerary…'; }
+
+      // 1. Fetch saved places from Firestore
+      let savedPlaces = [];
+      try {
+        const snap = await window.firebaseDb
+          .collection('boards').doc(board.id)
+          .collection('places').orderBy('createdAt', 'asc').get();
+        savedPlaces = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      } catch (e) {
+        console.warn('Could not load places for itinerary generation:', e);
+      }
+
+      const dests = board.destinations?.length ? board.destinations : ['Destination'];
+
+      // 2. Count non-food places per destination (food places become meals separately)
+      //    Places with no location go into the first destination.
+      const activityCount = {};
+      const foodCount     = {};
+      dests.forEach(d => { activityCount[d] = 0; foodCount[d] = 0; });
+
+      savedPlaces.forEach(p => {
+        const loc = p.location || dests[0];
+        if (!activityCount[loc]) activityCount[loc] = 0;
+        if (!foodCount[loc])     foodCount[loc]     = 0;
+        if (p.category === 'food') foodCount[loc]++;
+        else activityCount[loc]++;
       });
-      save(); renderList();
+
+      // 3. Work out total days available
+      const totalDays = board.startDate && board.endDate
+        ? Math.max(1, Math.ceil((new Date(board.endDate) - new Date(board.startDate)) / 86400000))
+        : null;
+
+      // 4. Allocate days per destination
+      //    Formula: weight = max(1, activityCount) so destinations with more
+      //    saved places get proportionally more days.
+      //    Minimum 1 day per destination always guaranteed.
+      const weights  = dests.map(d => Math.max(1, activityCount[d] || 0));
+      const totalW   = weights.reduce((a, b) => a + b, 0);
+      let   daysLeft = totalDays ?? Math.max(dests.length, weights.reduce((a, b) => a + Math.max(1, Math.ceil(b * 1.5)), 0));
+      daysLeft = Math.min(daysLeft, 21); // cap at 3 weeks
+
+      const daysPerDest = dests.map((d, i) => {
+        if (i === dests.length - 1) return Math.max(1, daysLeft - dests.slice(0,-1).reduce((a,_,j) => a + daysPerDest[j], 0));
+        return Math.max(1, Math.round((weights[i] / totalW) * daysLeft));
+      });
+      // Fix last element (can't self-reference above)
+      const allocatedSoFar = daysPerDest.slice(0,-1).reduce((a,b)=>a+b,0);
+      daysPerDest[dests.length-1] = Math.max(1, daysLeft - allocatedSoFar);
+
+      // 5. Generic fallback suggestions (used when no saved places fill a slot)
+      const FALLBACK = {
+        morning:   ['Breakfast at a local café',    'Morning market visit',  'Explore the neighbourhood'],
+        museum:    ['Museum visit',                  'Art gallery',           'Historical site tour'],
+        landmark:  ['Visit main landmark',           'Guided city tour',      'Viewpoint & photos'],
+        afternoon: ['Afternoon walking tour',        'Shopping district',     'Local market browse'],
+        evening:   ['Sunset viewpoint',              'Night market',          'Evening riverside walk'],
+      };
+      const fallback = (pool, i) => pool[i % pool.length];
+
+      // 6. Build days
+      days = [];
+      let dayNum  = 1;
+      let datePtr = board.startDate ? new Date(board.startDate + 'T12:00:00') : null;
+
+      dests.forEach((dest, di) => {
+        const numDaysHere = daysPerDest[di];
+
+        // Places for this destination, split by category
+        const destPlaces    = savedPlaces.filter(p => (p.location || dests[0]) === dest);
+        const foodPlaces    = destPlaces.filter(p => p.category === 'food');
+        const actPlaces     = destPlaces.filter(p => p.category !== 'food');
+
+        // Spread activity places across days (2–3 per day max to keep it realistic)
+        const ACTS_PER_DAY = 2;
+        let   actQueue = [...actPlaces];
+        let   foodQueue = [...foodPlaces];
+        let   fallbackMorningIdx = 0, fallbackAfternoonIdx = 0, fallbackEveningIdx = 0;
+
+        for (let d = 0; d < numDaysHere; d++) {
+          const dayDate = datePtr ? datePtr.toISOString().split('T')[0] : null;
+          const events  = [];
+          let   eid     = 0;
+
+          // ── Breakfast (8:00 AM) ──
+          const bfFood = foodQueue.find(p => p.notes?.toLowerCase().includes('breakfast')
+            || p.name.toLowerCase().includes('breakfast')
+            || p.name.toLowerCase().includes('café')
+            || p.name.toLowerCase().includes('cafe')
+            || p.name.toLowerCase().includes('coffee'));
+          if (bfFood) {
+            events.push({ id:`e-${dayNum}-${eid++}`, time:'8:00 AM',
+              name: bfFood.name, category:'breakfast',
+              notes: bfFood.address || bfFood.notes || '' });
+            foodQueue = foodQueue.filter(p => p.id !== bfFood.id);
+          } else {
+            events.push({ id:`e-${dayNum}-${eid++}`, time:'8:00 AM',
+              name: fallback(FALLBACK.morning, fallbackMorningIdx++),
+              category:'breakfast', notes:'' });
+          }
+
+          // ── Morning activity (10:00 AM) ──
+          const act1 = actQueue.shift();
+          if (act1) {
+            events.push({ id:`e-${dayNum}-${eid++}`, time:'10:00 AM',
+              name: act1.name, category: act1.category === 'museum' ? 'activity' : act1.category,
+              notes: act1.address || act1.notes || '' });
+          } else {
+            events.push({ id:`e-${dayNum}-${eid++}`, time:'10:00 AM',
+              name: fallback(FALLBACK.landmark, fallbackMorningIdx),
+              category:'activity', notes:'' });
+          }
+
+          // ── Lunch (1:00 PM) ──
+          const lunchFood = foodQueue.find(p =>
+            p.notes?.toLowerCase().includes('lunch') ||
+            p.name.toLowerCase().includes('restaurant') ||
+            p.name.toLowerCase().includes('lunch') ||
+            p.name.toLowerCase().includes('ramen') ||
+            p.name.toLowerCase().includes('sushi') ||
+            p.name.toLowerCase().includes('noodle'));
+          if (lunchFood) {
+            events.push({ id:`e-${dayNum}-${eid++}`, time:'1:00 PM',
+              name: lunchFood.name, category:'lunch',
+              notes: lunchFood.address || lunchFood.notes || '' });
+            foodQueue = foodQueue.filter(p => p.id !== lunchFood.id);
+          } else if (foodQueue.length) {
+            const anyFood = foodQueue.shift();
+            events.push({ id:`e-${dayNum}-${eid++}`, time:'1:00 PM',
+              name: anyFood.name, category:'lunch',
+              notes: anyFood.address || anyFood.notes || '' });
+          } else {
+            events.push({ id:`e-${dayNum}-${eid++}`, time:'1:00 PM',
+              name: `Lunch in ${dest}`, category:'lunch', notes:'' });
+          }
+
+          // ── Afternoon activity (3:00 PM) ──
+          const act2 = actQueue.shift();
+          if (act2) {
+            events.push({ id:`e-${dayNum}-${eid++}`, time:'3:00 PM',
+              name: act2.name, category: act2.category,
+              notes: act2.address || act2.notes || '' });
+          } else {
+            events.push({ id:`e-${dayNum}-${eid++}`, time:'3:00 PM',
+              name: fallback(FALLBACK.afternoon, fallbackAfternoonIdx++),
+              category:'activity', notes:'' });
+          }
+
+          // ── Dinner (7:00 PM) ──
+          const dinnerFood = foodQueue.find(p =>
+            p.notes?.toLowerCase().includes('dinner') ||
+            p.name.toLowerCase().includes('dinner') ||
+            p.name.toLowerCase().includes('bar') ||
+            p.name.toLowerCase().includes('izakaya') ||
+            p.name.toLowerCase().includes('bistro'));
+          if (dinnerFood) {
+            events.push({ id:`e-${dayNum}-${eid++}`, time:'7:00 PM',
+              name: dinnerFood.name, category:'dinner',
+              notes: dinnerFood.address || dinnerFood.notes || '' });
+            foodQueue = foodQueue.filter(p => p.id !== dinnerFood.id);
+          } else if (foodQueue.length) {
+            const anyFood = foodQueue.shift();
+            events.push({ id:`e-${dayNum}-${eid++}`, time:'7:00 PM',
+              name: anyFood.name, category:'dinner',
+              notes: anyFood.address || anyFood.notes || '' });
+          } else {
+            events.push({ id:`e-${dayNum}-${eid++}`, time:'7:00 PM',
+              name: fallback(FALLBACK.evening, fallbackEveningIdx++),
+              category:'dinner', notes:'' });
+          }
+
+          days.push({ id:`day-${dayNum}`, dayNumber: dayNum, date: dayDate, location: dest, events });
+          dayNum++;
+          if (datePtr) datePtr = new Date(datePtr.getTime() + 86400000);
+        }
+
+        // Travel day between destinations (if not the last destination)
+        if (di < dests.length - 1) {
+          const travelDate = datePtr ? datePtr.toISOString().split('T')[0] : null;
+          days.push({
+            id: `day-${dayNum}`, dayNumber: dayNum, date: travelDate,
+            location: `${dest} → ${dests[di+1]}`,
+            events: [
+              { id:`te-0`, time:'9:00 AM',  name:`Check out of accommodation in ${dest}`,  category:'transport', notes:'' },
+              { id:`te-1`, time:'11:00 AM', name:`Travel to ${dests[di+1]}`,               category:'transport', notes:'' },
+              { id:`te-2`, time:'2:00 PM',  name:`Arrive & check in at ${dests[di+1]}`,    category:'transport', notes:'' },
+              { id:`te-3`, time:'7:00 PM',  name:`Welcome dinner in ${dests[di+1]}`,       category:'dinner',    notes:'' },
+            ],
+          });
+          dayNum++;
+          if (datePtr) datePtr = new Date(datePtr.getTime() + 86400000);
+        }
+      });
+
+      await save();
+      renderList();
+      if (genBtn) { genBtn.disabled = false; genBtn.textContent = '✦ Regenerate'; }
     };
 
     const eventFormFields = (ev = {}) => `
