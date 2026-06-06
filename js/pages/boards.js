@@ -246,9 +246,30 @@ window.NewTripModal = {
         }
       }
 
-      // Navigation
-      content.querySelector('#nt-back')?.addEventListener('click', () => { step--; render(); });
-      content.querySelector('#nt-next')?.addEventListener('click', () => { step++; render(); });
+      // Navigation — capture all input values before wiping the DOM
+      const captureStep1Values = () => {
+        const s = content.querySelector('#nt-start');
+        const e = content.querySelector('#nt-end');
+        const fia = content.querySelector('#nt-fly-in-airport');
+        const fit = content.querySelector('#nt-fly-in-time');
+        const foa = content.querySelector('#nt-fly-out-airport');
+        const fot = content.querySelector('#nt-fly-out-time');
+        if (s)   startDate     = s.value;
+        if (e)   endDate       = e.value;
+        if (fia) flyInAirport  = fia.value.trim().toUpperCase();
+        if (fit) flyInTime     = fit.value.trim();
+        if (foa) flyOutAirport = foa.value.trim().toUpperCase();
+        if (fot) flyOutTime    = fot.value.trim();
+      };
+
+      content.querySelector('#nt-back')?.addEventListener('click', () => {
+        if (step === 1) captureStep1Values();
+        step--; render();
+      });
+      content.querySelector('#nt-next')?.addEventListener('click', () => {
+        if (step === 1) captureStep1Values();
+        step++; render();
+      });
       content.querySelector('#nt-create')?.addEventListener('click', async () => {
         const btn = content.querySelector('#nt-create');
         btn.textContent = 'Creating...'; btn.disabled = true;
