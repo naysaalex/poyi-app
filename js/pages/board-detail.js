@@ -618,49 +618,51 @@ window.BoardDetailPage = {
         else activityCount[loc]++;
       });
 
-      // 3. Date range setup
-      // DEBUG: log exactly what the board has so we can see the real values
-      console.log('[ITIN] board.startDate raw:', board.startDate, typeof board.startDate);
-      console.log('[ITIN] board.endDate raw:',   board.endDate,   typeof board.endDate);
+      // 3. Date range — work purely with YYYY-MM-DD strings and integer day indices.
+      //    Never use Date arithmetic for boundary checks — just count days used.
 
-      // Normalise dates — handle string "2026-06-09", Timestamp objects,
-      // and Date objects all the same way
+      // Normalise any date value to a plain "YYYY-MM-DD" string
       const toDateStr = val => {
         if (!val) return null;
-        if (typeof val === 'string') return val.split('T')[0]; // already "YYYY-MM-DD"
-        if (val.toDate) return val.toDate().toISOString().split('T')[0]; // Firestore Timestamp
-        if (val instanceof Date) return val.toISOString().split('T')[0];  // JS Date
-        return String(val).split('T')[0];
+        if (typeof val === 'string') return val.split('T')[0];
+        if (val && val.toDate) return val.toDate().toISOString().split('T')[0]; // Firestore Timestamp
+        if (val instanceof Date) return val.toISOString().split('T')[0];
+        return null;
       };
 
       const startStr = toDateStr(board.startDate);
       const endStr   = toDateStr(board.endDate);
-      console.log('[ITIN] startStr:', startStr, '| endStr:', endStr);
 
-      const parseDate = s => s ? new Date(s + 'T12:00:00') : null;
-      const tripStart = parseDate(startStr);
-      const tripEnd   = parseDate(endStr);
-      console.log('[ITIN] tripStart:', tripStart?.toISOString(), '| tripEnd:', tripEnd?.toISOString());
-
-      // Hard boundary — withinDates() gates every single day we push
-      const endBoundary = tripEnd ? new Date(tripEnd.getTime() + (12 * 3600000)) : null;
-      const withinDates = () => !endBoundary || !datePtr || datePtr <= endBoundary;
-
-      // Raw trip length in days (inclusive of start and end day)
-      const rawTotalDays = tripStart && tripEnd
-        ? Math.max(1, Math.round((tripEnd - tripStart) / 86400000) + 1)
+      // Total trip days (inclusive): "2026-06-09" to "2026-06-19" = 11 days
+      const rawTotalDays = startStr && endStr
+        ? Math.max(1, Math.round(
+            (new Date(endStr + 'T12:00:00') - new Date(startStr + 'T12:00:00'))
+            / 86400000
+          ) + 1)
         : null;
-      console.log('[ITIN] rawTotalDays:', rawTotalDays, '| endBoundary:', endBoundary?.toISOString());
 
-      // 4. Activity budget = trip days minus 1 travel day per transition
-      //    Capped hard at rawTotalDays so we can never exceed the date range.
+      // dayOffset: integer index of current day (0 = startStr, 1 = startStr+1, etc.)
+      // We track this as a simple counter — no Date comparison needed.
+      let dayOffset = 0;
+      const maxDayOffset = rawTotalDays ? rawTotalDays - 1 : Infinity; // 0-indexed
+
+      // Helper: get the calendar date string for a given offset from startStr
+      const dateForOffset = offset => {
+        if (!startStr) return null;
+        const d = new Date(startStr + 'T12:00:00');
+        d.setDate(d.getDate() + offset);
+        // Format as YYYY-MM-DD using local date parts to avoid UTC shift
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      };
+
+      // 4. Activity budget
       const travelDaysNeeded = Math.max(0, dests.length - 1);
       const activityBudget = rawTotalDays
-        ? Math.min(
-            rawTotalDays,                                        // never exceed trip length
-            Math.max(dests.length, rawTotalDays - travelDaysNeeded)
-          )
-        : dests.reduce((sum, d) =>                              // no dates: estimate from places
+        ? Math.min(rawTotalDays, Math.max(dests.length, rawTotalDays - travelDaysNeeded))
+        : dests.reduce((sum, d) =>
             sum + Math.max(1, Math.ceil((activityCount[d] || 1) * 1.5)), 0);
 
       const weights = dests.map(d => Math.max(1, activityCount[d] || 0));
@@ -691,15 +693,41 @@ window.BoardDetailPage = {
       // Times for extra activity slots (fills in between the fixed 5)
       const EXTRA_TIMES = ['9:00 AM', '11:30 AM', '2:30 PM', '4:30 PM', '6:00 PM'];
 
-      // 6. Build days — hard stop when datePtr reaches endBoundary
-      console.log('[ITIN] activityBudget:', activityBudget, '| daysPerDest:', daysPerDest, '| travelDaysNeeded:', travelDaysNeeded);
+      // Read flight info from board
+      const flyInAirport  = board.flyInAirport  || null;
+      const flyInTime     = board.flyInTime     || null;
+      const flyOutAirport = board.flyOutAirport || null;
+      const flyOutTime    = board.flyOutTime    || null;
+
+      // If flying in late (after noon), first day only gets afternoon + dinner
+      const flyInHour = flyInTime ? (() => {
+        const t = flyInTime.toLowerCase();
+        const [hStr, rest] = t.split(':');
+        let h = parseInt(hStr, 10);
+        if (rest && rest.includes('pm') && h !== 12) h += 12;
+        if (rest && rest.includes('am') && h === 12) h = 0;
+        return h;
+      })() : null;
+
+      // If flying out early (before noon), last day only gets breakfast + morning
+      const flyOutHour = flyOutTime ? (() => {
+        const t = flyOutTime.toLowerCase();
+        const [hStr, rest] = t.split(':');
+        let h = parseInt(hStr, 10);
+        if (rest && rest.includes('pm') && h !== 12) h += 12;
+        if (rest && rest.includes('am') && h === 12) h = 0;
+        return h;
+      })() : null;
+
+      const totalDaysCount = rawTotalDays || (activityBudget + travelDaysNeeded);
+
+      // 6. Build days using integer day offsets — no Date comparison, no timezone issues
       days = [];
-      let dayNum  = 1;
-      let datePtr = tripStart ? new Date(tripStart) : null;
+      let dayNum = 1;
 
       dests.forEach((dest, di) => {
         const numDaysHere = daysPerDest[di];
-        if (!withinDates()) return; // already past the end date, skip this destination
+        if (dayOffset > maxDayOffset) return; // already used all days
 
         const destPlaces = savedPlaces.filter(p => (p.location || dests[0]) === dest);
         const foodPlaces = destPlaces.filter(p => p.category === 'food');
@@ -710,104 +738,171 @@ window.BoardDetailPage = {
         let fallbackIdx = 0;
 
         for (let d = 0; d < numDaysHere; d++) {
-          if (!withinDates()) break; // stop if we've hit the end date
-          const dayDate = datePtr ? datePtr.toISOString().split('T')[0] : null;
+          if (dayOffset > maxDayOffset) break; // used all available days
+          const dayDate = dateForOffset(dayOffset);
           const events  = [];
           let   eid     = 0;
 
-          // ── Breakfast (8:00 AM) ──────────────────────────────
-          const bfFood = foodQueue.find(p =>
-            ['breakfast','café','cafe','coffee','brunch','bakery'].some(kw =>
-              p.name.toLowerCase().includes(kw) || (p.notes||'').toLowerCase().includes(kw)));
-          if (bfFood) {
-            events.push({ id:`e-${dayNum}-${eid++}`, time:'8:00 AM', name:bfFood.name,
-              category:'breakfast', notes:bfFood.address || bfFood.notes || '' });
-            foodQueue = foodQueue.filter(p => p.id !== bfFood.id);
+          const isFirstDay = dayNum === 1;
+          const isLastDay  = dayOffset === maxDayOffset;
+
+          // ── ARRIVAL DAY (first day, flight info provided) ─────
+          if (isFirstDay && flyInAirport) {
+            events.push({ id:`e-${dayNum}-${eid++}`,
+              time: flyInTime || 'Morning',
+              name: `Arrive at ${flyInAirport}`,
+              category: 'transport',
+              notes: flyInTime ? `Landing ${flyInTime}` : '' });
+            // Only add morning activities if landing before noon
+            if (!flyInHour || flyInHour < 13) {
+              events.push({ id:`e-${dayNum}-${eid++}`, time:'12:00 PM',
+                name:`Check in & settle in ${dest}`, category:'transport', notes:'' });
+            } else {
+              events.push({ id:`e-${dayNum}-${eid++}`, time:'3:00 PM',
+                name:`Check in & freshen up`, category:'transport', notes:'' });
+            }
+            // Welcome dinner
+            const dinnerFood2 = foodQueue.find(p =>
+              ['dinner','bar','izakaya','bistro','restaurant'].some(kw =>
+                p.name.toLowerCase().includes(kw) || (p.notes||'').toLowerCase().includes(kw)));
+            if (dinnerFood2) {
+              events.push({ id:`e-${dayNum}-${eid++}`, time:'7:00 PM', name:dinnerFood2.name,
+                category:'dinner', notes:dinnerFood2.address || dinnerFood2.notes || '' });
+              foodQueue = foodQueue.filter(p => p.id !== dinnerFood2.id);
+            } else {
+              events.push({ id:`e-${dayNum}-${eid++}`, time:'7:00 PM',
+                name:`Welcome dinner in ${dest}`, category:'dinner', notes:'' });
+            }
+
+          // ── DEPARTURE DAY (last day, flight info provided) ────
+          } else if (isLastDay && flyOutAirport) {
+            // Only schedule morning activities if flight is after noon
+            if (!flyOutHour || flyOutHour >= 12) {
+              const bfFoodDep = foodQueue.find(p =>
+                ['breakfast','café','cafe','coffee','brunch','bakery'].some(kw =>
+                  p.name.toLowerCase().includes(kw) || (p.notes||'').toLowerCase().includes(kw)));
+              if (bfFoodDep) {
+                events.push({ id:`e-${dayNum}-${eid++}`, time:'8:00 AM', name:bfFoodDep.name,
+                  category:'breakfast', notes:bfFoodDep.address || bfFoodDep.notes || '' });
+                foodQueue = foodQueue.filter(p => p.id !== bfFoodDep.id);
+              } else {
+                events.push({ id:`e-${dayNum}-${eid++}`, time:'8:00 AM',
+                  name:'Last breakfast in ' + dest, category:'breakfast', notes:'' });
+              }
+              if (!flyOutHour || flyOutHour >= 14) {
+                const actDep = actQueue.shift();
+                events.push({ id:`e-${dayNum}-${eid++}`, time:'10:00 AM',
+                  name: actDep ? actDep.name : `Morning stroll in ${dest}`,
+                  category: actDep ? actDep.category : 'activity',
+                  notes: actDep ? (actDep.address || actDep.notes || '') : '' });
+              }
+            } else {
+              events.push({ id:`e-${dayNum}-${eid++}`, time:'6:00 AM',
+                name:'Early breakfast & pack up', category:'breakfast', notes:'' });
+            }
+            events.push({ id:`e-${dayNum}-${eid++}`,
+              time: flyOutHour ? (flyOutHour >= 12 ? '12:00 PM' : '8:00 AM') : '11:00 AM',
+              name: `Head to ${flyOutAirport} airport`,
+              category: 'transport', notes: flyOutTime ? `Flight at ${flyOutTime}` : '' });
+            events.push({ id:`e-${dayNum}-${eid++}`,
+              time: flyOutTime || 'Afternoon',
+              name: `Depart ${flyOutAirport}`,
+              category: 'transport',
+              notes: `Safe travels! ✈` });
+
+          // ── REGULAR DAY ───────────────────────────────────────
           } else {
-            events.push({ id:`e-${dayNum}-${eid++}`, time:'8:00 AM',
-              name:fallback(FALLBACK.morning, fallbackIdx), category:'breakfast', notes:'' });
-          }
+            // Breakfast
+            const bfFood = foodQueue.find(p =>
+              ['breakfast','café','cafe','coffee','brunch','bakery'].some(kw =>
+                p.name.toLowerCase().includes(kw) || (p.notes||'').toLowerCase().includes(kw)));
+            if (bfFood) {
+              events.push({ id:`e-${dayNum}-${eid++}`, time:'8:00 AM', name:bfFood.name,
+                category:'breakfast', notes:bfFood.address || bfFood.notes || '' });
+              foodQueue = foodQueue.filter(p => p.id !== bfFood.id);
+            } else {
+              events.push({ id:`e-${dayNum}-${eid++}`, time:'8:00 AM',
+                name:fallback(FALLBACK.morning, fallbackIdx), category:'breakfast', notes:'' });
+            }
 
-          // ── Morning activity (10:00 AM) ──────────────────────
-          const act1 = actQueue.shift();
-          events.push({ id:`e-${dayNum}-${eid++}`, time:'10:00 AM',
-            name: act1 ? act1.name : fallback(FALLBACK.landmark, fallbackIdx),
-            category: act1 ? act1.category : 'activity',
-            notes: act1 ? (act1.address || act1.notes || '') : '' });
+            // Morning activity
+            const act1 = actQueue.shift();
+            events.push({ id:`e-${dayNum}-${eid++}`, time:'10:00 AM',
+              name: act1 ? act1.name : fallback(FALLBACK.landmark, fallbackIdx),
+              category: act1 ? act1.category : 'activity',
+              notes: act1 ? (act1.address || act1.notes || '') : '' });
 
-          // ── Lunch (1:00 PM) ──────────────────────────────────
-          const lunchFood = foodQueue.find(p =>
-            ['lunch','restaurant','ramen','sushi','noodle','bistro','brasserie','diner'].some(kw =>
-              p.name.toLowerCase().includes(kw) || (p.notes||'').toLowerCase().includes(kw)));
-          if (lunchFood) {
-            events.push({ id:`e-${dayNum}-${eid++}`, time:'1:00 PM', name:lunchFood.name,
-              category:'lunch', notes:lunchFood.address || lunchFood.notes || '' });
-            foodQueue = foodQueue.filter(p => p.id !== lunchFood.id);
-          } else if (foodQueue.length) {
-            const f = foodQueue.shift();
-            events.push({ id:`e-${dayNum}-${eid++}`, time:'1:00 PM', name:f.name,
-              category:'lunch', notes:f.address || f.notes || '' });
-          } else {
-            events.push({ id:`e-${dayNum}-${eid++}`, time:'1:00 PM',
-              name:`Lunch in ${dest}`, category:'lunch', notes:'' });
-          }
+            // Lunch
+            const lunchFood = foodQueue.find(p =>
+              ['lunch','restaurant','ramen','sushi','noodle','bistro','brasserie','diner'].some(kw =>
+                p.name.toLowerCase().includes(kw) || (p.notes||'').toLowerCase().includes(kw)));
+            if (lunchFood) {
+              events.push({ id:`e-${dayNum}-${eid++}`, time:'1:00 PM', name:lunchFood.name,
+                category:'lunch', notes:lunchFood.address || lunchFood.notes || '' });
+              foodQueue = foodQueue.filter(p => p.id !== lunchFood.id);
+            } else if (foodQueue.length) {
+              const f = foodQueue.shift();
+              events.push({ id:`e-${dayNum}-${eid++}`, time:'1:00 PM', name:f.name,
+                category:'lunch', notes:f.address || f.notes || '' });
+            } else {
+              events.push({ id:`e-${dayNum}-${eid++}`, time:'1:00 PM',
+                name:`Lunch in ${dest}`, category:'lunch', notes:'' });
+            }
 
-          // ── Afternoon activity (3:00 PM) ─────────────────────
-          const act2 = actQueue.shift();
-          events.push({ id:`e-${dayNum}-${eid++}`, time:'3:00 PM',
-            name: act2 ? act2.name : fallback(FALLBACK.afternoon, fallbackIdx),
-            category: act2 ? act2.category : 'activity',
-            notes: act2 ? (act2.address || act2.notes || '') : '' });
+            // Afternoon activity
+            const act2 = actQueue.shift();
+            events.push({ id:`e-${dayNum}-${eid++}`, time:'3:00 PM',
+              name: act2 ? act2.name : fallback(FALLBACK.afternoon, fallbackIdx),
+              category: act2 ? act2.category : 'activity',
+              notes: act2 ? (act2.address || act2.notes || '') : '' });
 
-          // ── Extra activity places (no limit) ─────────────────
-          // Any remaining places that haven't been scheduled yet get added
-          // between afternoon and dinner at 30-min intervals
-          let extraTimeIdx = 0;
-          while (actQueue.length > 0 && extraTimeIdx < EXTRA_TIMES.length) {
-            const extra = actQueue.shift();
-            events.push({ id:`e-${dayNum}-${eid++}`, time:EXTRA_TIMES[extraTimeIdx++],
-              name:extra.name, category:extra.category,
-              notes:extra.address || extra.notes || '' });
-          }
+            // Extra activity places — no limit
+            let extraTimeIdx = 0;
+            while (actQueue.length > 0 && extraTimeIdx < EXTRA_TIMES.length) {
+              const extra = actQueue.shift();
+              events.push({ id:`e-${dayNum}-${eid++}`, time:EXTRA_TIMES[extraTimeIdx++],
+                name:extra.name, category:extra.category,
+                notes:extra.address || extra.notes || '' });
+            }
 
-          // ── Dinner (7:00 PM) ─────────────────────────────────
-          const dinnerFood = foodQueue.find(p =>
-            ['dinner','bar','izakaya','bistro','tavern','steakhouse','grill'].some(kw =>
-              p.name.toLowerCase().includes(kw) || (p.notes||'').toLowerCase().includes(kw)));
-          if (dinnerFood) {
-            events.push({ id:`e-${dayNum}-${eid++}`, time:'7:00 PM', name:dinnerFood.name,
-              category:'dinner', notes:dinnerFood.address || dinnerFood.notes || '' });
-            foodQueue = foodQueue.filter(p => p.id !== dinnerFood.id);
-          } else if (foodQueue.length) {
-            const f = foodQueue.shift();
-            events.push({ id:`e-${dayNum}-${eid++}`, time:'7:00 PM', name:f.name,
-              category:'dinner', notes:f.address || f.notes || '' });
-          } else {
-            events.push({ id:`e-${dayNum}-${eid++}`, time:'7:00 PM',
-              name:fallback(FALLBACK.evening, fallbackIdx++), category:'dinner', notes:'' });
-          }
+            // Dinner
+            const dinnerFood = foodQueue.find(p =>
+              ['dinner','bar','izakaya','bistro','tavern','steakhouse','grill'].some(kw =>
+                p.name.toLowerCase().includes(kw) || (p.notes||'').toLowerCase().includes(kw)));
+            if (dinnerFood) {
+              events.push({ id:`e-${dayNum}-${eid++}`, time:'7:00 PM', name:dinnerFood.name,
+                category:'dinner', notes:dinnerFood.address || dinnerFood.notes || '' });
+              foodQueue = foodQueue.filter(p => p.id !== dinnerFood.id);
+            } else if (foodQueue.length) {
+              const f = foodQueue.shift();
+              events.push({ id:`e-${dayNum}-${eid++}`, time:'7:00 PM', name:f.name,
+                category:'dinner', notes:f.address || f.notes || '' });
+            } else {
+              events.push({ id:`e-${dayNum}-${eid++}`, time:'7:00 PM',
+                name:fallback(FALLBACK.evening, fallbackIdx++), category:'dinner', notes:'' });
+            }
+          } // end regular day
 
           days.push({ id:`day-${dayNum}`, dayNumber:dayNum, date:dayDate, location:dest, events });
           dayNum++;
-          if (datePtr) datePtr = new Date(datePtr.getTime() + 86400000);
+          dayOffset++;
         }
 
         // ── Travel day between destinations ───────────────────
-        // Only insert if there is a next destination AND still within dates
-        if (di < dests.length - 1 && withinDates()) {
-          const travelDate = datePtr ? datePtr.toISOString().split('T')[0] : null;
+        if (di < dests.length - 1 && dayOffset <= maxDayOffset) {
+          const travelDate = dateForOffset(dayOffset);
           days.push({
             id:`day-${dayNum}`, dayNumber:dayNum, date:travelDate,
             location:`${dest} → ${dests[di+1]}`,
             events: [
-              { id:'te-0', time:'9:00 AM',  name:`Check out in ${dest}`,             category:'transport', notes:'' },
-              { id:'te-1', time:'11:00 AM', name:`Travel to ${dests[di+1]}`,          category:'transport', notes:'' },
-              { id:'te-2', time:'2:00 PM',  name:`Arrive & check in at ${dests[di+1]}`, category:'transport', notes:'' },
-              { id:'te-3', time:'7:00 PM',  name:`Welcome dinner in ${dests[di+1]}`, category:'dinner',    notes:'' },
+              { id:'te-0', time:'9:00 AM',  name:`Check out in ${dest}`,                category:'transport', notes:'' },
+              { id:'te-1', time:'11:00 AM', name:`Travel to ${dests[di+1]}`,             category:'transport', notes:'' },
+              { id:'te-2', time:'2:00 PM',  name:`Arrive & check in at ${dests[di+1]}`,  category:'transport', notes:'' },
+              { id:'te-3', time:'7:00 PM',  name:`Welcome dinner in ${dests[di+1]}`,     category:'dinner',    notes:'' },
             ],
           });
           dayNum++;
-          if (datePtr) datePtr = new Date(datePtr.getTime() + 86400000);
+          dayOffset++;
         }
       });
 
@@ -938,6 +1033,22 @@ window.BoardDetailPage = {
         <div class="field"><label>Board name</label><input id="bst-title" value="${title}" ${!isOwner?'disabled':''} /></div>
         <div class="field"><label>Privacy</label><div id="bst-privacy"></div></div>
         <div class="field">
+          <label>Fly in <span style="font-size:10px;color:var(--ink-40);font-weight:400;text-transform:none">optional</span></label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <input id="bst-fly-in-airport" placeholder="MAD, JFK…" value="${board.flyInAirport||''}" ${!isOwner?'disabled':''} style="padding:9px 12px;border:1px solid var(--ink-20);border-radius:12px;font-family:var(--font-body);font-size:13px;color:var(--ink);outline:none;background:${!isOwner?'var(--sand)':'var(--white)'}" />
+            <input id="bst-fly-in-time"    placeholder="2:30 PM"    value="${board.flyInTime||''}"    ${!isOwner?'disabled':''} style="padding:9px 12px;border:1px solid var(--ink-20);border-radius:12px;font-family:var(--font-body);font-size:13px;color:var(--ink);outline:none;background:${!isOwner?'var(--sand)':'var(--white)'}" />
+          </div>
+          <p style="font-size:11px;color:var(--ink-40);margin-top:4px">Arrival airport code and landing time</p>
+        </div>
+        <div class="field">
+          <label>Fly out <span style="font-size:10px;color:var(--ink-40);font-weight:400;text-transform:none">optional</span></label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <input id="bst-fly-out-airport" placeholder="BCN, LHR…" value="${board.flyOutAirport||''}" ${!isOwner?'disabled':''} style="padding:9px 12px;border:1px solid var(--ink-20);border-radius:12px;font-family:var(--font-body);font-size:13px;color:var(--ink);outline:none;background:${!isOwner?'var(--sand)':'var(--white)'}" />
+            <input id="bst-fly-out-time"    placeholder="10:00 AM"    value="${board.flyOutTime||''}"    ${!isOwner?'disabled':''} style="padding:9px 12px;border:1px solid var(--ink-20);border-radius:12px;font-family:var(--font-body);font-size:13px;color:var(--ink);outline:none;background:${!isOwner?'var(--sand)':'var(--white)'}" />
+          </div>
+          <p style="font-size:11px;color:var(--ink-40);margin-top:4px">Departure airport code and flight time</p>
+        </div>
+        <div class="field">
           <label>Vision Board</label>
           <div class="toggle-wrap" id="bst-vis-wrap" style="${!isOwner?'opacity:0.6;pointer-events:none':''}">
             <span id="bst-vis-label" style="font-size:13px;color:var(--ink-60)">${vision ? 'Enabled' : 'Hidden'}</span>
@@ -980,9 +1091,13 @@ window.BoardDetailPage = {
         const btn = el.querySelector('#bst-save');
         btn.textContent = 'Saving...'; btn.disabled = true;
         await window.DB.updateBoard(board.id, {
-          title:         el.querySelector('#bst-title').value.trim(),
+          title:          el.querySelector('#bst-title').value.trim(),
           privacy,
-          visionBoardOn: vision,
+          visionBoardOn:  vision,
+          flyInAirport:   el.querySelector('#bst-fly-in-airport').value.trim().toUpperCase()  || null,
+          flyInTime:      el.querySelector('#bst-fly-in-time').value.trim()                   || null,
+          flyOutAirport:  el.querySelector('#bst-fly-out-airport').value.trim().toUpperCase() || null,
+          flyOutTime:     el.querySelector('#bst-fly-out-time').value.trim()                  || null,
         });
         btn.textContent = '✓ Saved!';
         setTimeout(() => { btn.textContent = 'Save Changes'; btn.disabled = false; }, 2000);

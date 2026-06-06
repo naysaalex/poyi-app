@@ -72,6 +72,7 @@ window.NewTripModal = {
     let step = 0;
     let title = '', privacy = 'friends', destinations = [], destInput = '';
     let startDate = '', endDate = '', visionBoard = true, selectedCollabs = new Set();
+    let flyInAirport = '', flyInTime = '', flyOutAirport = '', flyOutTime = '';
     let friends = [];
 
     const STEPS = ['Details', 'Destinations', 'Settings'];
@@ -123,6 +124,34 @@ window.NewTripModal = {
                 <input type="date" id="nt-end" value="${endDate}" min="${startDate}" />
               </div>
             </div>
+          </div>
+          <div class="field">
+            <label>Fly in <span class="optional">optional</span></label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div class="dest-input-wrap" style="border-radius:12px">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:15px;height:15px;flex-shrink:0"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                <input id="nt-fly-in-airport" placeholder="e.g. MAD, JFK, LAX" value="${flyInAirport}" style="font-size:13px" />
+              </div>
+              <div class="dest-input-wrap" style="border-radius:12px">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:15px;height:15px;flex-shrink:0;color:var(--ink-40)"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <input id="nt-fly-in-time" placeholder="e.g. 2:30 PM" value="${flyInTime}" style="font-size:13px" />
+              </div>
+            </div>
+            <p class="hint">Arrival airport code and landing time</p>
+          </div>
+          <div class="field">
+            <label>Fly out <span class="optional">optional</span></label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div class="dest-input-wrap" style="border-radius:12px">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:15px;height:15px;flex-shrink:0"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                <input id="nt-fly-out-airport" placeholder="e.g. BCN, LHR, NRT" value="${flyOutAirport}" style="font-size:13px" />
+              </div>
+              <div class="dest-input-wrap" style="border-radius:12px">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:15px;height:15px;flex-shrink:0;color:var(--ink-40)"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <input id="nt-fly-out-time" placeholder="e.g. 10:00 AM" value="${flyOutTime}" style="font-size:13px" />
+              </div>
+            </div>
+            <p class="hint">Departure airport code and flight time</p>
           </div>` : ''}
 
         ${step === 2 ? `
@@ -177,6 +206,10 @@ window.NewTripModal = {
         content.querySelector('#nt-start').onchange = e => { startDate = e.target.value; };
         content.querySelector('#nt-end').oninput    = e => { endDate   = e.target.value; };
         content.querySelector('#nt-end').onchange   = e => { endDate   = e.target.value; };
+        content.querySelector('#nt-fly-in-airport').oninput  = e => { flyInAirport  = e.target.value.trim().toUpperCase(); };
+        content.querySelector('#nt-fly-in-time').oninput     = e => { flyInTime     = e.target.value.trim(); };
+        content.querySelector('#nt-fly-out-airport').oninput = e => { flyOutAirport = e.target.value.trim().toUpperCase(); };
+        content.querySelector('#nt-fly-out-time').oninput    = e => { flyOutTime    = e.target.value.trim(); };
       }
 
       // Bind step 2 controls
@@ -222,10 +255,21 @@ window.NewTripModal = {
         // Read date inputs fresh at submit — don't rely solely on onchange
         const startVal = content.querySelector('#nt-start')?.value || startDate || null;
         const endVal   = content.querySelector('#nt-end')?.value   || endDate   || null;
+        // Read flight fields fresh at submit
+        const flyInAirportVal  = content.querySelector('#nt-fly-in-airport')?.value.trim().toUpperCase()  || flyInAirport  || null;
+        const flyInTimeVal     = content.querySelector('#nt-fly-in-time')?.value.trim()                   || flyInTime     || null;
+        const flyOutAirportVal = content.querySelector('#nt-fly-out-airport')?.value.trim().toUpperCase() || flyOutAirport || null;
+        const flyOutTimeVal    = content.querySelector('#nt-fly-out-time')?.value.trim()                  || flyOutTime    || null;
+
         const boardId = await window.DB.createBoard(window.currentUser.uid, {
           title: title.trim(), privacy, destinations,
-          startDate: startVal || null,
-          endDate:   endVal   || null, visionBoardOn: visionBoard,
+          startDate:      startVal        || null,
+          endDate:        endVal          || null,
+          flyInAirport:   flyInAirportVal || null,
+          flyInTime:      flyInTimeVal    || null,
+          flyOutAirport:  flyOutAirportVal|| null,
+          flyOutTime:     flyOutTimeVal   || null,
+          visionBoardOn:  visionBoard,
           tags: destinations.map(d => d.toLowerCase()),
         });
         for (const uid of selectedCollabs) {
