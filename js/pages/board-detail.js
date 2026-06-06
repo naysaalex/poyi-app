@@ -621,44 +621,72 @@ window.BoardDetailPage = {
         else activityCount[loc]++;
       });
 
-      // 3. Date range — work purely with YYYY-MM-DD strings and integer day indices.
-      //    Never use Date arithmetic for boundary checks — just count days used.
+      // 3. Date range — pure string/integer approach, zero Date objects for boundary logic
 
-      // Normalise any date value to a plain "YYYY-MM-DD" string
-      const toDateStr = val => {
+      // Convert any date value to a local YYYY-MM-DD string, safely
+      const toLocalDateStr = val => {
         if (!val) return null;
-        if (typeof val === 'string') return val.split('T')[0];
-        if (val && val.toDate) return val.toDate().toISOString().split('T')[0]; // Firestore Timestamp
-        if (val instanceof Date) return val.toISOString().split('T')[0];
+        // Plain string like "2026-06-19" or "2026-06-19T..."
+        if (typeof val === 'string') return val.slice(0, 10);
+        // Firestore Timestamp — use local year/month/day, NOT toISOString (which is UTC)
+        if (val && typeof val.toDate === 'function') {
+          const d = val.toDate();
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${y}-${m}-${day}`;
+        }
+        if (val instanceof Date) {
+          const y = val.getFullYear();
+          const m = String(val.getMonth() + 1).padStart(2, '0');
+          const day = String(val.getDate()).padStart(2, '0');
+          return `${y}-${m}-${day}`;
+        }
         return null;
       };
 
-      const startStr = toDateStr(board.startDate);
-      const endStr   = toDateStr(board.endDate);
+      const startStr = toLocalDateStr(board.startDate);
+      const endStr   = toLocalDateStr(board.endDate);
 
-      // Total trip days (inclusive): "2026-06-09" to "2026-06-19" = 11 days
-      const rawTotalDays = startStr && endStr
-        ? Math.max(1, Math.round(
-            (new Date(endStr + 'T12:00:00') - new Date(startStr + 'T12:00:00'))
-            / 86400000
-          ) + 1)
-        : null;
+      // Count days purely by splitting the YYYY-MM-DD strings into integers —
+      // no Date objects, no timezones, no rounding errors.
+      const dateToDayIndex = s => {
+        if (!s) return null;
+        const [y, m, d] = s.split('-').map(Number);
+        // Days since a fixed epoch using integer math only
+        // Formula: Julian Day Number (simplified)
+        const a = Math.floor((14 - m) / 12);
+        const yr = y + 4800 - a;
+        const mo = m + 12 * a - 3;
+        return d + Math.floor((153 * mo + 2) / 5) + 365 * yr +
+               Math.floor(yr / 4) - Math.floor(yr / 100) + Math.floor(yr / 400) - 32045;
+      };
 
-      // dayOffset: integer index of current day (0 = startStr, 1 = startStr+1, etc.)
-      // We track this as a simple counter — no Date comparison needed.
+      const startJD     = dateToDayIndex(startStr);
+      const endJD       = dateToDayIndex(endStr);
+      const rawTotalDays = (startJD && endJD) ? Math.max(1, endJD - startJD + 1) : null;
+
+      // dayOffset counter — 0 = startStr, maxDayOffset = last valid day
       let dayOffset = 0;
-      const maxDayOffset = rawTotalDays ? rawTotalDays - 1 : Infinity; // 0-indexed
+      const maxDayOffset = rawTotalDays ? rawTotalDays - 1 : Infinity;
 
-      // Helper: get the calendar date string for a given offset from startStr
+      // Convert an offset integer back to a YYYY-MM-DD string using the
+      // same Julian Day arithmetic — no Date objects needed
       const dateForOffset = offset => {
-        if (!startStr) return null;
-        const d = new Date(startStr + 'T12:00:00');
-        d.setDate(d.getDate() + offset);
-        // Format as YYYY-MM-DD using local date parts to avoid UTC shift
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${y}-${m}-${day}`;
+        if (!startJD) return null;
+        const jd = startJD + offset;
+        // Convert Julian Day back to Gregorian calendar
+        const l = jd + 68569;
+        const n = Math.floor((4 * l) / 146097);
+        const ll = l - Math.floor((146097 * n + 3) / 4);
+        const i = Math.floor((4000 * (ll + 1)) / 1461001);
+        const lll = ll - Math.floor((1461 * i) / 4) + 31;
+        const j = Math.floor((80 * lll) / 2447);
+        const day = lll - Math.floor((2447 * j) / 80);
+        const k = Math.floor(j / 11);
+        const month = j + 2 - 12 * k;
+        const year = 100 * (n - 49) + i + k;
+        return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
       };
 
       // 4. Activity budget
