@@ -37,7 +37,7 @@ window.BoardsPage = {
 
       boards.forEach(board => {
         const days = board.startDate && board.endDate
-          ? Math.ceil((new Date(board.endDate) - new Date(board.startDate)) / 86400000)
+          ? Math.round((new Date(board.endDate + 'T12:00:00') - new Date(board.startDate + 'T12:00:00')) / 86400000) + 1
           : null;
 
         const row = document.createElement('div');
@@ -51,7 +51,7 @@ window.BoardsPage = {
             </div>
             <p class="board-row-dests">${(board.destinations||[]).join(' · ') || 'No destinations yet'}</p>
             <div class="board-row-meta">
-              ${board.startDate ? `<span>${new Date(board.startDate).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}${days ? ` · ${days} days` : ''}</span>` : ''}
+              ${board.startDate ? `<span>${new Date(board.startDate + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}${days ? ` · ${days} days` : ''}</span>` : ''}
               <span>${(board.collaborators||[1]).length} collaborator${(board.collaborators||[]).length !== 1 ? 's' : ''}</span>
               ${board.visionBoardOn ? '<span class="vision-tag">Vision board</span>' : ''}
             </div>

@@ -42,10 +42,13 @@ window.BoardDetailPage = {
       }
       if (board.startDate) {
         const s = document.createElement('span');
-        const days = board.endDate ? Math.ceil((new Date(board.endDate) - new Date(board.startDate)) / 86400000) : null;
-        s.textContent = new Date(board.startDate).toLocaleDateString('en-US', { month:'short', day:'numeric' })
-          + (board.endDate ? ` – ${new Date(board.endDate).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })}` : '')
-          + (days ? ` · ${days} days` : '');
+        // Use T12:00:00 to prevent UTC midnight from shifting the date in local timezones
+        const sd = new Date(board.startDate + 'T12:00:00');
+        const ed = board.endDate ? new Date(board.endDate + 'T12:00:00') : null;
+        const days = ed ? Math.round((ed - sd) / 86400000) : null;
+        s.textContent = sd.toLocaleDateString('en-US', { month:'short', day:'numeric' })
+          + (ed ? ` – ${ed.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })}` : '')
+          + (days ? ` · ${days + 1} days` : '');
         meta.appendChild(s);
       }
 
@@ -1031,6 +1034,14 @@ window.BoardDetailPage = {
       <div class="bst-section">
         <div class="bst-section-title">Board Details</div>
         <div class="field"><label>Board name</label><input id="bst-title" value="${title}" ${!isOwner?'disabled':''} /></div>
+        <div class="field">
+          <label>Trip dates <span style="font-size:10px;color:var(--ink-40);font-weight:400;text-transform:none">optional</span></label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="date" id="bst-start" value="${board.startDate||''}" ${!isOwner?'disabled':''} style="flex:1;padding:9px 12px;border:1px solid var(--ink-20);border-radius:12px;font-family:var(--font-body);font-size:13px;color:var(--ink);background:${!isOwner?'var(--sand)':'var(--white)'};outline:none" />
+            <span style="color:var(--ink-40);font-size:14px">→</span>
+            <input type="date" id="bst-end" value="${board.endDate||''}" ${!isOwner?'disabled':''} style="flex:1;padding:9px 12px;border:1px solid var(--ink-20);border-radius:12px;font-family:var(--font-body);font-size:13px;color:var(--ink);background:${!isOwner?'var(--sand)':'var(--white)'};outline:none" />
+          </div>
+        </div>
         <div class="field"><label>Privacy</label><div id="bst-privacy"></div></div>
         <div class="field">
           <label>Fly in <span style="font-size:10px;color:var(--ink-40);font-weight:400;text-transform:none">optional</span></label>
@@ -1094,6 +1105,8 @@ window.BoardDetailPage = {
           title:          el.querySelector('#bst-title').value.trim(),
           privacy,
           visionBoardOn:  vision,
+          startDate:      el.querySelector('#bst-start').value || null,
+          endDate:        el.querySelector('#bst-end').value   || null,
           flyInAirport:   el.querySelector('#bst-fly-in-airport').value.trim().toUpperCase()  || null,
           flyInTime:      el.querySelector('#bst-fly-in-time').value.trim()                   || null,
           flyOutAirport:  el.querySelector('#bst-fly-out-airport').value.trim().toUpperCase() || null,
