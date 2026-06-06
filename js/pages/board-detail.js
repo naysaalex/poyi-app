@@ -619,10 +619,28 @@ window.BoardDetailPage = {
       });
 
       // 3. Date range setup
-      //    Sanitise: strip time, parse as local noon to avoid timezone shifts
-      const parseDate = s => s ? new Date(s.split('T')[0] + 'T12:00:00') : null;
-      const tripStart = parseDate(board.startDate);
-      const tripEnd   = parseDate(board.endDate);
+      // DEBUG: log exactly what the board has so we can see the real values
+      console.log('[ITIN] board.startDate raw:', board.startDate, typeof board.startDate);
+      console.log('[ITIN] board.endDate raw:',   board.endDate,   typeof board.endDate);
+
+      // Normalise dates — handle string "2026-06-09", Timestamp objects,
+      // and Date objects all the same way
+      const toDateStr = val => {
+        if (!val) return null;
+        if (typeof val === 'string') return val.split('T')[0]; // already "YYYY-MM-DD"
+        if (val.toDate) return val.toDate().toISOString().split('T')[0]; // Firestore Timestamp
+        if (val instanceof Date) return val.toISOString().split('T')[0];  // JS Date
+        return String(val).split('T')[0];
+      };
+
+      const startStr = toDateStr(board.startDate);
+      const endStr   = toDateStr(board.endDate);
+      console.log('[ITIN] startStr:', startStr, '| endStr:', endStr);
+
+      const parseDate = s => s ? new Date(s + 'T12:00:00') : null;
+      const tripStart = parseDate(startStr);
+      const tripEnd   = parseDate(endStr);
+      console.log('[ITIN] tripStart:', tripStart?.toISOString(), '| tripEnd:', tripEnd?.toISOString());
 
       // Hard boundary — withinDates() gates every single day we push
       const endBoundary = tripEnd ? new Date(tripEnd.getTime() + (12 * 3600000)) : null;
@@ -632,6 +650,7 @@ window.BoardDetailPage = {
       const rawTotalDays = tripStart && tripEnd
         ? Math.max(1, Math.round((tripEnd - tripStart) / 86400000) + 1)
         : null;
+      console.log('[ITIN] rawTotalDays:', rawTotalDays, '| endBoundary:', endBoundary?.toISOString());
 
       // 4. Activity budget = trip days minus 1 travel day per transition
       //    Capped hard at rawTotalDays so we can never exceed the date range.
@@ -673,9 +692,10 @@ window.BoardDetailPage = {
       const EXTRA_TIMES = ['9:00 AM', '11:30 AM', '2:30 PM', '4:30 PM', '6:00 PM'];
 
       // 6. Build days — hard stop when datePtr reaches endBoundary
+      console.log('[ITIN] activityBudget:', activityBudget, '| daysPerDest:', daysPerDest, '| travelDaysNeeded:', travelDaysNeeded);
       days = [];
       let dayNum  = 1;
-      let datePtr = tripStart ? new Date(tripStart) : null; // use parsed tripStart
+      let datePtr = tripStart ? new Date(tripStart) : null;
 
       dests.forEach((dest, di) => {
         const numDaysHere = daysPerDest[di];
