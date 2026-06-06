@@ -173,7 +173,9 @@ window.NewTripModal = {
         };
         content.querySelector('#nt-add-dest').onclick = addDest;
         content.querySelector('#nt-dest-input').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); addDest(); } };
+        content.querySelector('#nt-start').oninput  = e => { startDate = e.target.value; };
         content.querySelector('#nt-start').onchange = e => { startDate = e.target.value; };
+        content.querySelector('#nt-end').oninput    = e => { endDate   = e.target.value; };
         content.querySelector('#nt-end').onchange   = e => { endDate   = e.target.value; };
       }
 
@@ -217,9 +219,13 @@ window.NewTripModal = {
       content.querySelector('#nt-create')?.addEventListener('click', async () => {
         const btn = content.querySelector('#nt-create');
         btn.textContent = 'Creating...'; btn.disabled = true;
+        // Read date inputs fresh at submit — don't rely solely on onchange
+        const startVal = content.querySelector('#nt-start')?.value || startDate || null;
+        const endVal   = content.querySelector('#nt-end')?.value   || endDate   || null;
         const boardId = await window.DB.createBoard(window.currentUser.uid, {
-          title: title.trim(), privacy, destinations, startDate: startDate || null,
-          endDate: endDate || null, visionBoardOn: visionBoard,
+          title: title.trim(), privacy, destinations,
+          startDate: startVal || null,
+          endDate:   endVal   || null, visionBoardOn: visionBoard,
           tags: destinations.map(d => d.toLowerCase()),
         });
         for (const uid of selectedCollabs) {

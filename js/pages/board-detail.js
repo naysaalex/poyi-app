@@ -618,29 +618,31 @@ window.BoardDetailPage = {
         else activityCount[loc]++;
       });
 
-      // 3. Hard date boundary — every day added checks against this
-      //    endDate is the LAST valid calendar day of the trip.
-      const endBoundary = board.endDate
-        ? new Date(board.endDate + 'T23:59:59')
-        : null;
+      // 3. Date range setup
+      //    Sanitise: strip time, parse as local noon to avoid timezone shifts
+      const parseDate = s => s ? new Date(s.split('T')[0] + 'T12:00:00') : null;
+      const tripStart = parseDate(board.startDate);
+      const tripEnd   = parseDate(board.endDate);
 
-      // Helper: returns true if datePtr is still within the trip range
+      // Hard boundary — withinDates() gates every single day we push
+      const endBoundary = tripEnd ? new Date(tripEnd.getTime() + (12 * 3600000)) : null;
       const withinDates = () => !endBoundary || !datePtr || datePtr <= endBoundary;
 
-      // 4. Work out how many activity days to allocate per destination
-      //    (weighted by place count). Travel days are excluded from this budget
-      //    because they are inserted only when dates permit.
-      const travelDaysNeeded = Math.max(0, dests.length - 1);
-      const rawTotalDays = board.startDate && board.endDate
-        ? Math.max(1, Math.ceil((new Date(board.endDate) - new Date(board.startDate)) / 86400000))
+      // Raw trip length in days (inclusive of start and end day)
+      const rawTotalDays = tripStart && tripEnd
+        ? Math.max(1, Math.round((tripEnd - tripStart) / 86400000) + 1)
         : null;
 
-      // Activity budget = total days minus travel days, but NEVER less than
-      // the number of destinations (each needs at least 1 day).
-      // If no dates are set, estimate from place counts.
+      // 4. Activity budget = trip days minus 1 travel day per transition
+      //    Capped hard at rawTotalDays so we can never exceed the date range.
+      const travelDaysNeeded = Math.max(0, dests.length - 1);
       const activityBudget = rawTotalDays
-        ? Math.max(dests.length, rawTotalDays - travelDaysNeeded)
-        : dests.reduce((sum, d) => sum + Math.max(1, Math.ceil((activityCount[d] || 1) * 1.5)), 0);
+        ? Math.min(
+            rawTotalDays,                                        // never exceed trip length
+            Math.max(dests.length, rawTotalDays - travelDaysNeeded)
+          )
+        : dests.reduce((sum, d) =>                              // no dates: estimate from places
+            sum + Math.max(1, Math.ceil((activityCount[d] || 1) * 1.5)), 0);
 
       const weights = dests.map(d => Math.max(1, activityCount[d] || 0));
       const totalW  = weights.reduce((a, b) => a + b, 0);
@@ -673,7 +675,7 @@ window.BoardDetailPage = {
       // 6. Build days — hard stop when datePtr reaches endBoundary
       days = [];
       let dayNum  = 1;
-      let datePtr = board.startDate ? new Date(board.startDate + 'T12:00:00') : null;
+      let datePtr = tripStart ? new Date(tripStart) : null; // use parsed tripStart
 
       dests.forEach((dest, di) => {
         const numDaysHere = daysPerDest[di];
