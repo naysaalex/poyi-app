@@ -618,29 +618,39 @@ window.BoardDetailPage = {
         else activityCount[loc]++;
       });
 
-      // 3. Work out total days available
-      //    If dates are set, subtract travel days between destinations
-      //    so the itinerary never exceeds the selected date range.
-      const travelDays = Math.max(0, dests.length - 1); // 1 travel day per destination transition
+      // 3. Hard date boundary — every day added checks against this
+      //    endDate is the LAST valid calendar day of the trip.
+      const endBoundary = board.endDate
+        ? new Date(board.endDate + 'T23:59:59')
+        : null;
+
+      // Helper: returns true if datePtr is still within the trip range
+      const withinDates = () => !endBoundary || !datePtr || datePtr <= endBoundary;
+
+      // 4. Work out how many activity days to allocate per destination
+      //    (weighted by place count). Travel days are excluded from this budget
+      //    because they are inserted only when dates permit.
+      const travelDaysNeeded = Math.max(0, dests.length - 1);
       const rawTotalDays = board.startDate && board.endDate
         ? Math.max(1, Math.ceil((new Date(board.endDate) - new Date(board.startDate)) / 86400000))
         : null;
-      // Activity days = total days minus travel days (minimum 1 per destination)
-      const activityDaysAvailable = rawTotalDays
-        ? Math.max(dests.length, rawTotalDays - travelDays)
-        : Math.max(dests.length, dests.reduce((sum, d) => sum + Math.max(1, Math.ceil((activityCount[d] || 1) * 1.5)), 0));
-      const totalDays = Math.min(activityDaysAvailable + travelDays, 21);
 
-      // 4. Allocate activity days per destination (weighted by place count)
+      // Activity budget = total days minus travel days, but NEVER less than
+      // the number of destinations (each needs at least 1 day).
+      // If no dates are set, estimate from place counts.
+      const activityBudget = rawTotalDays
+        ? Math.max(dests.length, rawTotalDays - travelDaysNeeded)
+        : dests.reduce((sum, d) => sum + Math.max(1, Math.ceil((activityCount[d] || 1) * 1.5)), 0);
+
       const weights = dests.map(d => Math.max(1, activityCount[d] || 0));
       const totalW  = weights.reduce((a, b) => a + b, 0);
       const daysPerDest = [];
       let allocated = 0;
       dests.forEach((d, i) => {
         if (i === dests.length - 1) {
-          daysPerDest.push(Math.max(1, activityDaysAvailable - allocated));
+          daysPerDest.push(Math.max(1, activityBudget - allocated));
         } else {
-          const share = Math.max(1, Math.round((weights[i] / totalW) * activityDaysAvailable));
+          const share = Math.max(1, Math.round((weights[i] / totalW) * activityBudget));
           daysPerDest.push(share);
           allocated += share;
         }
@@ -660,13 +670,14 @@ window.BoardDetailPage = {
       // Times for extra activity slots (fills in between the fixed 5)
       const EXTRA_TIMES = ['9:00 AM', '11:30 AM', '2:30 PM', '4:30 PM', '6:00 PM'];
 
-      // 6. Build days
+      // 6. Build days — hard stop when datePtr reaches endBoundary
       days = [];
       let dayNum  = 1;
       let datePtr = board.startDate ? new Date(board.startDate + 'T12:00:00') : null;
 
       dests.forEach((dest, di) => {
         const numDaysHere = daysPerDest[di];
+        if (!withinDates()) return; // already past the end date, skip this destination
 
         const destPlaces = savedPlaces.filter(p => (p.location || dests[0]) === dest);
         const foodPlaces = destPlaces.filter(p => p.category === 'food');
@@ -677,6 +688,7 @@ window.BoardDetailPage = {
         let fallbackIdx = 0;
 
         for (let d = 0; d < numDaysHere; d++) {
+          if (!withinDates()) break; // stop if we've hit the end date
           const dayDate = datePtr ? datePtr.toISOString().split('T')[0] : null;
           const events  = [];
           let   eid     = 0;
@@ -759,12 +771,8 @@ window.BoardDetailPage = {
         }
 
         // ── Travel day between destinations ───────────────────
-        // Only insert if there is a next destination AND we still have days left
-        const hasNextDest  = di < dests.length - 1;
-        const daysUsed     = days.length;
-        const withinRange  = !rawTotalDays || daysUsed < rawTotalDays;
-
-        if (hasNextDest && withinRange) {
+        // Only insert if there is a next destination AND still within dates
+        if (di < dests.length - 1 && withinDates()) {
           const travelDate = datePtr ? datePtr.toISOString().split('T')[0] : null;
           days.push({
             id:`day-${dayNum}`, dayNumber:dayNum, date:travelDate,
