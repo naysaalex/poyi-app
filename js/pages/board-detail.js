@@ -582,34 +582,27 @@ window.BoardDetailPage = {
     // Reads saved places, weights days by place count per destination,
     // and schedules real places into real time slots.
     const generate = async () => {
-      // Show a loading overlay so the user gets instant feedback
-      const loadingEl = document.createElement('div');
-      loadingEl.style.cssText = 'position:absolute;inset:0;background:rgba(250,248,244,0.85);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:10;border-radius:inherit';
-      loadingEl.innerHTML = `
-        <div style="width:32px;height:32px;border:2px solid var(--clay-light);border-top-color:var(--clay);border-radius:50%;animation:spin 0.7s linear infinite"></div>
-        <p style="font-family:var(--font-display);font-style:italic;font-size:18px;font-weight:300;color:var(--ink-60)">Building your itinerary…</p>`;
-      el.style.position = 'relative';
-      el.appendChild(loadingEl);
+      // Disable the button immediately for visual feedback
+      const genBtnEl = el.querySelector('#itin-gen') || el.querySelector('#itin-gen2');
+      if (genBtnEl) { genBtnEl.disabled = true; genBtnEl.textContent = 'Loading places…'; }
 
-      // Wrap everything in try/finally so the overlay ALWAYS gets removed
+      // 1. Fetch saved places — no orderBy to avoid Firestore index requirement
+      let savedPlaces = [];
       try {
-        // 1. Fetch saved places — no orderBy to avoid index requirement
-        let savedPlaces = [];
-        try {
-          const snap = await window.firebaseDb
-            .collection('boards').doc(board.id)
-            .collection('places').get();
-          savedPlaces = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-          // Sort client-side by createdAt
-          savedPlaces.sort((a, b) => {
-            const ta = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
-            const tb = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
-            return ta - tb;
-          });
-        } catch (e) {
-          console.warn('Could not load places for itinerary generation:', e);
-          // Continue with empty places — will use fallback suggestions
-        }
+        const snap = await window.firebaseDb
+          .collection('boards').doc(board.id)
+          .collection('places').get();
+        savedPlaces = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        savedPlaces.sort((a, b) => {
+          const ta = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+          const tb = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+          return ta - tb;
+        });
+      } catch (e) {
+        console.warn('Could not load places, using fallback suggestions:', e.message);
+      }
+
+      if (genBtnEl) genBtnEl.textContent = 'Building days…';
 
       const dests = board.destinations?.length ? board.destinations : ['Destination'];
 
@@ -799,17 +792,13 @@ window.BoardDetailPage = {
         }
       });
 
-        await save();
-        renderList();
+      // Render immediately — user sees the itinerary right away
+      renderList();
 
-      } catch (err) {
-        console.error('Itinerary generation failed:', err);
-        UI.toast('Could not build itinerary — please try again', 'error');
-      } finally {
-        // Always remove the loading overlay, even if something threw
-        loadingEl.remove();
-        el.style.position = '';
-      }
+      // Save to Firestore in the background — don't await so UI never hangs
+      save().catch(err => {
+        console.warn('Itinerary auto-save failed (will retry on next Save & Publish):', err.message);
+      });
     };
 
     const eventFormFields = (ev = {}) => `
