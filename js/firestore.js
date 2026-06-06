@@ -172,10 +172,18 @@ window.DB = {
   },
 
   subscribeToUserBoards(uid, cb) {
+    // No orderBy to avoid needing a composite Firestore index — sort client-side
     return this.db.collection('boards')
       .where('collaborators', 'array-contains', uid)
-      .orderBy('updatedAt', 'desc')
-      .onSnapshot(snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+      .onSnapshot(snap => {
+        const boards = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        boards.sort((a, b) => {
+          const ta = a.updatedAt?.toDate ? a.updatedAt.toDate() : new Date(a.updatedAt || 0);
+          const tb = b.updatedAt?.toDate ? b.updatedAt.toDate() : new Date(b.updatedAt || 0);
+          return tb - ta;
+        });
+        cb(boards);
+      });
   },
 
   async inviteCollaborator(boardId, invitedUid, inviterUid) {
