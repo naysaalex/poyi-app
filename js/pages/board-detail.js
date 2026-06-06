@@ -582,19 +582,34 @@ window.BoardDetailPage = {
     // Reads saved places, weights days by place count per destination,
     // and schedules real places into real time slots.
     const generate = async () => {
-      const genBtn = el.querySelector('#itin-gen') || el.querySelector('#itin-gen2');
-      if (genBtn) { genBtn.disabled = true; genBtn.textContent = 'Building your itinerary…'; }
+      // Show a loading overlay so the user gets instant feedback
+      const loadingEl = document.createElement('div');
+      loadingEl.style.cssText = 'position:absolute;inset:0;background:rgba(250,248,244,0.85);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:10;border-radius:inherit';
+      loadingEl.innerHTML = `
+        <div style="width:32px;height:32px;border:2px solid var(--clay-light);border-top-color:var(--clay);border-radius:50%;animation:spin 0.7s linear infinite"></div>
+        <p style="font-family:var(--font-display);font-style:italic;font-size:18px;font-weight:300;color:var(--ink-60)">Building your itinerary…</p>`;
+      el.style.position = 'relative';
+      el.appendChild(loadingEl);
 
-      // 1. Fetch saved places from Firestore
-      let savedPlaces = [];
+      // Wrap everything in try/finally so the overlay ALWAYS gets removed
       try {
-        const snap = await window.firebaseDb
-          .collection('boards').doc(board.id)
-          .collection('places').orderBy('createdAt', 'asc').get();
-        savedPlaces = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      } catch (e) {
-        console.warn('Could not load places for itinerary generation:', e);
-      }
+        // 1. Fetch saved places — no orderBy to avoid index requirement
+        let savedPlaces = [];
+        try {
+          const snap = await window.firebaseDb
+            .collection('boards').doc(board.id)
+            .collection('places').get();
+          savedPlaces = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          // Sort client-side by createdAt
+          savedPlaces.sort((a, b) => {
+            const ta = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+            const tb = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+            return ta - tb;
+          });
+        } catch (e) {
+          console.warn('Could not load places for itinerary generation:', e);
+          // Continue with empty places — will use fallback suggestions
+        }
 
       const dests = board.destinations?.length ? board.destinations : ['Destination'];
 
@@ -626,13 +641,19 @@ window.BoardDetailPage = {
       let   daysLeft = totalDays ?? Math.max(dests.length, weights.reduce((a, b) => a + Math.max(1, Math.ceil(b * 1.5)), 0));
       daysLeft = Math.min(daysLeft, 21); // cap at 3 weeks
 
-      const daysPerDest = dests.map((d, i) => {
-        if (i === dests.length - 1) return Math.max(1, daysLeft - dests.slice(0,-1).reduce((a,_,j) => a + daysPerDest[j], 0));
-        return Math.max(1, Math.round((weights[i] / totalW) * daysLeft));
+      // Allocate days — build incrementally to avoid self-reference issues
+      const daysPerDest = [];
+      let allocated = 0;
+      dests.forEach((d, i) => {
+        if (i === dests.length - 1) {
+          // Give remaining days to last destination (minimum 1)
+          daysPerDest.push(Math.max(1, daysLeft - allocated));
+        } else {
+          const share = Math.max(1, Math.round((weights[i] / totalW) * daysLeft));
+          daysPerDest.push(share);
+          allocated += share;
+        }
       });
-      // Fix last element (can't self-reference above)
-      const allocatedSoFar = daysPerDest.slice(0,-1).reduce((a,b)=>a+b,0);
-      daysPerDest[dests.length-1] = Math.max(1, daysLeft - allocatedSoFar);
 
       // 5. Generic fallback suggestions (used when no saved places fill a slot)
       const FALLBACK = {
@@ -778,9 +799,17 @@ window.BoardDetailPage = {
         }
       });
 
-      await save();
-      renderList();
-      if (genBtn) { genBtn.disabled = false; genBtn.textContent = '✦ Regenerate'; }
+        await save();
+        renderList();
+
+      } catch (err) {
+        console.error('Itinerary generation failed:', err);
+        UI.toast('Could not build itinerary — please try again', 'error');
+      } finally {
+        // Always remove the loading overlay, even if something threw
+        loadingEl.remove();
+        el.style.position = '';
+      }
     };
 
     const eventFormFields = (ev = {}) => `
