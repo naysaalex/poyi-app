@@ -113,3 +113,42 @@
 .auth-username-status.taken     { color: var(--rose); }
 .auth-username-status.checking  { color: var(--ink-40); font-size: 13px; font-weight: 400; }
 .auth-username-hint { font-size: 11px; color: var(--ink-40); margin-top: 4px; }
+
+/* ── Logout screen ──────────────────────────────────────────── */
+#logout-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ink);
+  position: relative;
+  overflow: hidden;
+  padding: 20px;
+}
+.logout-card {
+  text-align: center;
+  animation: scaleIn 0.35s var(--ease) both;
+}
+.logout-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(196,149,106,0.12);
+  border: 1.5px solid rgba(196,149,106,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 24px;
+  color: var(--clay);
+  animation: fadeIn 0.5s var(--ease) 0.1s both;
+}
+.logout-icon svg {
+  width: 28px;
+  height: 28px;
+}
+.logout-message {
+  font-size: 15px;
+  color: var(--ink-60);
+  line-height: 1.5;
+  font-family: var(--font-body);
+}
