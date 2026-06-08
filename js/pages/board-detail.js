@@ -231,7 +231,7 @@ window.BoardDetailPage = {
   // ── PLACES ────────────────────────────────────────────────
   renderPlacesTab(board, canEdit) {
     const CAT_COLORS = { food:'#B85C6E', museum:'#3D6B8A', landmark:'#C4956A', nature:'#4A6741', architecture:'#6B4A7A', beach:'#3D6B8A', adventure:'#A07848', general:'#8A7E74' };
-    const MAPS_KEY = '';
+    const MAPS_KEY = 'AIzaSyCPFSkgsIeYBGr_lxjabD7n_JTaqdLp0KU';
 
     const el = document.createElement('div');
     el.className = 'pt';
@@ -337,21 +337,153 @@ window.BoardDetailPage = {
       el.querySelector('#pt-list-btn').classList.add('active');
       el.querySelector('#pt-map-btn').classList.remove('active');
     };
+    // Track map instance so we don't reinit on every toggle
+    let mapInstance = null;
+    let mapMarkers  = [];
+
+    // Load Google Maps JS API once, then call cb
+    const loadMapsApi = (cb) => {
+      if (window.google?.maps) { cb(); return; }
+      if (window._mapsLoading) { window._mapsOnLoad = cb; return; }
+      window._mapsLoading = true;
+      window._mapsOnLoad  = cb;
+      window.initPoYiMap  = () => { window._mapsLoading = false; if (window._mapsOnLoad) window._mapsOnLoad(); };
+      const s = document.createElement('script');
+      s.src = `https://maps.googleapis.com/maps/api/js?key=${MAPS_KEY}&callback=initPoYiMap&libraries=places`;
+      s.async = true; s.defer = true;
+      document.head.appendChild(s);
+    };
+
+    // Pin colours match CAT_COLORS
+    const pinSvg = (color) =>
+      `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36">
+          <path d="M14 0C6.27 0 0 6.27 0 14c0 9.27 14 22 14 22S28 23.27 28 14C28 6.27 21.73 0 14 0z" fill="${color}"/>
+          <circle cx="14" cy="14" r="6" fill="white" opacity="0.9"/>
+        </svg>`
+      )}`;
+
+    const initMap = (placesToPin) => {
+      const mapEl = el.querySelector('#pt-map');
+      if (!mapEl) return;
+      mapEl.innerHTML = '<div id="gmap-canvas" style="width:100%;height:100%"></div>';
+
+      // Default center: first destination or world view
+      const defaultCenter = { lat: 20, lng: 0 };
+      const map = new google.maps.Map(document.getElementById('gmap-canvas'), {
+        zoom: placesToPin.length ? 13 : 3,
+        center: defaultCenter,
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: true,
+        styles: [
+          { featureType:'poi', elementType:'labels', stylers:[{visibility:'off'}] },
+          { featureType:'transit', elementType:'labels', stylers:[{visibility:'off'}] },
+        ],
+      });
+      mapInstance = map;
+      mapMarkers  = [];
+
+      if (!placesToPin.length) {
+        // No places with addresses — show destination search areas
+        const geocoder = new google.maps.Geocoder();
+        const dests    = board.destinations || [];
+        if (dests.length) {
+          geocoder.geocode({ address: dests[0] }, (res, status) => {
+            if (status === 'OK') map.setCenter(res[0].geometry.location);
+          });
+        }
+        return;
+      }
+
+      // Geocode places that don't have lat/lng, then add markers
+      const bounds    = new google.maps.LatLngBounds();
+      const geocoder  = new google.maps.Geocoder();
+      const infoWin   = new google.maps.InfoWindow();
+      let   pending   = placesToPin.length;
+
+      const addMarker = (place, latLng) => {
+        const color  = CAT_COLORS[place.category] || CAT_COLORS.general;
+        const marker = new google.maps.Marker({
+          position: latLng,
+          map,
+          title: place.name,
+          icon: { url: pinSvg(color), scaledSize: new google.maps.Size(28, 36), anchor: new google.maps.Point(14, 36) },
+          animation: google.maps.Animation.DROP,
+        });
+
+        marker.addListener('click', () => {
+          infoWin.setContent(`
+            <div style="font-family:'DM Sans',sans-serif;max-width:200px;padding:4px 2px">
+              <div style="font-weight:600;font-size:13px;color:#1C1814;margin-bottom:3px">${place.name}</div>
+              ${place.address ? `<div style="font-size:11px;color:#666;margin-bottom:3px">${place.address}</div>` : ''}
+              <span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:99px;background:${color}18;color:${color};text-transform:capitalize">${place.category||'general'}</span>
+              ${place.notes ? `<div style="font-size:11px;color:#888;margin-top:4px">${place.notes}</div>` : ''}
+            </div>`);
+          infoWin.open(map, marker);
+        });
+
+        mapMarkers.push(marker);
+        bounds.extend(latLng);
+        pending--;
+        if (pending === 0) {
+          if (mapMarkers.length === 1) {
+            map.setCenter(bounds.getCenter());
+            map.setZoom(15);
+          } else {
+            map.fitBounds(bounds, 60);
+          }
+        }
+      };
+
+      placesToPin.forEach(place => {
+        if (place.lat && place.lng) {
+          // Already have coordinates
+          addMarker(place, { lat: place.lat, lng: place.lng });
+        } else if (place.address || place.name) {
+          // Geocode by address or name + destination
+          const query = place.address
+            ? place.address
+            : `${place.name}, ${place.location || board.destinations?.[0] || ''}`;
+          geocoder.geocode({ address: query }, (res, status) => {
+            if (status === 'OK') {
+              // Save coords back to Firestore so we don't geocode again
+              const { lat, lng } = res[0].geometry.location;
+              window.firebaseDb.collection('boards').doc(board.id)
+                .collection('places').doc(place.id)
+                .update({ lat: lat(), lng: lng() }).catch(() => {});
+              addMarker(place, res[0].geometry.location);
+            } else {
+              pending--;
+              if (pending === 0 && mapMarkers.length) map.fitBounds(bounds, 60);
+            }
+          });
+        } else {
+          pending--;
+        }
+      });
+    };
+
     el.querySelector('#pt-map-btn').onclick = () => {
       el.querySelector('#pt-list').style.display = 'none';
       const mapEl = el.querySelector('#pt-map');
       mapEl.style.display = '';
       el.querySelector('#pt-list-btn').classList.remove('active');
       el.querySelector('#pt-map-btn').classList.add('active');
-      if (!mapEl.innerHTML) {
-        const query = board.destinations?.join('+') || board.title;
-        mapEl.innerHTML = MAPS_KEY
-          ? `<iframe src="https://www.google.com/maps/embed/v1/search?key=${MAPS_KEY}&q=${encodeURIComponent(query)}" allowfullscreen loading="lazy" style="width:100%;height:100%;border:none"></iframe>`
-          : `<div class="pt-map-placeholder">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
-              <p>Map view</p><span>Add a Google Maps API key in board-detail.js to enable this</span>
-            </div>`;
+
+      if (mapInstance) {
+        // Map already initialised — just refresh markers for current filter
+        google.maps.event.trigger(mapInstance, 'resize');
+        return;
       }
+
+      // Show spinner while loading
+      mapEl.innerHTML = `<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:var(--sand)">
+        <div style="width:32px;height:32px;border:3px solid var(--clay-light);border-top-color:var(--clay);border-radius:50%;animation:spin 0.7s linear infinite"></div>
+        <p style="font-family:var(--font-display);font-style:italic;font-size:18px;font-weight:300;color:var(--ink-60)">Loading map…</p>
+      </div>`;
+
+      loadMapsApi(() => initMap(places));
     };
 
     const placeFormFields = (place = {}) => `
@@ -427,7 +559,19 @@ window.BoardDetailPage = {
     };
 
     el.querySelector('#pt-add-btn')?.addEventListener('click', openAddPlace);
-    const unsub = window.DB.subscribeToBoardPlaces(board.id, p => { places = p; renderPlaces(); });
+    const unsub = window.DB.subscribeToBoardPlaces(board.id, p => {
+      places = p;
+      renderPlaces();
+      // If map is visible and already initialised, refresh markers
+      if (mapInstance && el.querySelector('#pt-map')?.style.display !== 'none') {
+        mapMarkers.forEach(m => m.setMap(null));
+        mapMarkers = [];
+        initMap(places.filter(p2 =>
+          (filterLoc === 'all' || p2.location === filterLoc) &&
+          (filterCat === 'all' || p2.category === filterCat)
+        ));
+      }
+    });
     this.unsubs.push(unsub);
     return el;
   },
