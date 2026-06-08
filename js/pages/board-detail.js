@@ -909,25 +909,19 @@ window.BoardDetailPage = {
       const flyOutAirport = board.flyOutAirport || null;
       const flyOutTime    = board.flyOutTime    || null;
 
-      // If flying in late (after noon), first day only gets afternoon + dinner
-      const flyInHour = flyInTime ? (() => {
-        const t = flyInTime.toLowerCase();
-        const [hStr, rest] = t.split(':');
-        let h = parseInt(hStr, 10);
-        if (rest && rest.includes('pm') && h !== 12) h += 12;
-        if (rest && rest.includes('am') && h === 12) h = 0;
+      // Parse a time string like "2:30 PM", "14:30", "10am", "9:00 AM" → hour (0-23)
+      const parseHour = (timeStr) => {
+        if (!timeStr) return null;
+        const m = timeStr.toLowerCase().trim().match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+        if (!m) return null;
+        let h = parseInt(m[1], 10);
+        if (m[3] === 'pm' && h !== 12) h += 12;
+        if (m[3] === 'am' && h === 12) h = 0;
         return h;
-      })() : null;
+      };
 
-      // If flying out early (before noon), last day only gets breakfast + morning
-      const flyOutHour = flyOutTime ? (() => {
-        const t = flyOutTime.toLowerCase();
-        const [hStr, rest] = t.split(':');
-        let h = parseInt(hStr, 10);
-        if (rest && rest.includes('pm') && h !== 12) h += 12;
-        if (rest && rest.includes('am') && h === 12) h = 0;
-        return h;
-      })() : null;
+      const flyInHour  = parseHour(flyInTime);   // null if no time set
+      const flyOutHour = parseHour(flyOutTime);
 
       const totalDaysCount = rawTotalDays || (activityBudget + travelDaysNeeded);
 
