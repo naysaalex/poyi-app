@@ -29,6 +29,14 @@ window.DB = {
     return snap.exists ? { id: snap.id, ...snap.data() } : null;
   },
 
+  async deleteUserProfile(uid) {
+    // Delete the Firestore profile document.
+    // Note: boards, places, and vision images are NOT cascade-deleted here —
+    // that would require Cloud Functions. They become orphaned but are
+    // inaccessible since the Auth account is gone.
+    await this.db.collection('users').doc(uid).delete();
+  },
+
   async updateUserProfile(uid, data) {
     await this.db.collection('users').doc(uid).update({
       ...data,
