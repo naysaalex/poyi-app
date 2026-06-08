@@ -291,7 +291,7 @@ window.BoardDetailPage = {
           const row = document.createElement('div');
           row.className = 'place-row';
           row.innerHTML = `
-            <div class="place-dot" style="background:${color}"></div>
+            <div class="place-dot" style="background:${color};margin-top:2px"></div>
             <div class="place-main">
               <div class="place-name">${place.name}</div>
               <div class="place-meta">
@@ -300,19 +300,47 @@ window.BoardDetailPage = {
               </div>
               ${place.notes ? `<div class="place-notes">${place.notes}</div>` : ''}
             </div>
-            <div class="place-actions">
-              ${canEdit ? `
-                <button class="place-edit" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-                <button class="place-delete" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M9 6V4h6v2"/></svg></button>
-              ` : ''}
-            </div>`;
-          row.querySelector('.place-delete')?.addEventListener('click', e => {
-            e.stopPropagation();
-            window.DB.deletePlace(board.id, place.id);
-          });
-          row.querySelector('.place-edit')?.addEventListener('click', e => {
+            ${canEdit ? `
+            <div class="place-actions-always">
+              <button class="place-edit-btn" title="Edit place">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+                Edit
+              </button>
+              <button class="place-delete-btn" title="Delete place">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6l-1 14H6L5 6"/>
+                  <path d="M9 6V4h6v2"/>
+                </svg>
+                Delete
+              </button>
+            </div>` : ''}`;
+          row.querySelector('.place-edit-btn')?.addEventListener('click', e => {
             e.stopPropagation();
             openEditPlace(place);
+          });
+          row.querySelector('.place-delete-btn')?.addEventListener('click', e => {
+            e.stopPropagation();
+            const btn = e.currentTarget;
+            if (btn.dataset.confirm === 'true') {
+              window.DB.deletePlace(board.id, place.id);
+            } else {
+              btn.dataset.confirm = 'true';
+              btn.textContent = 'Confirm?';
+              btn.style.background = 'var(--rose-light)';
+              btn.style.color = 'var(--rose)';
+              setTimeout(() => {
+                if (btn.dataset.confirm) {
+                  delete btn.dataset.confirm;
+                  btn.style.background = '';
+                  btn.style.color = '';
+                  btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M9 6V4h6v2"/></svg> Delete`;
+                }
+              }, 3000);
+            }
           });
           group.appendChild(row);
         });
