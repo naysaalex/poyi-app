@@ -341,16 +341,27 @@ window.BoardDetailPage = {
     let mapInstance = null;
     let mapMarkers  = [];
 
-    // Load Google Maps JS API once, then call cb
+    // Load Google Maps JS API once, then call cb(err)
     const loadMapsApi = (cb) => {
-      if (window.google?.maps) { cb(); return; }
-      if (window._mapsLoading) { window._mapsOnLoad = cb; return; }
+      if (window.google?.maps) { cb(null); return; }
+      if (window._mapsLoading) {
+        const prev = window._mapsOnLoad;
+        window._mapsOnLoad = (err) => { if (prev) prev(err); cb(err); };
+        return;
+      }
       window._mapsLoading = true;
       window._mapsOnLoad  = cb;
-      window.initPoYiMap  = () => { window._mapsLoading = false; if (window._mapsOnLoad) window._mapsOnLoad(); };
+      window.initPoYiMap  = () => {
+        window._mapsLoading = false;
+        if (window._mapsOnLoad) window._mapsOnLoad(null);
+      };
       const s = document.createElement('script');
       s.src = `https://maps.googleapis.com/maps/api/js?key=${MAPS_KEY}&callback=initPoYiMap&libraries=places`;
       s.async = true; s.defer = true;
+      s.onerror = () => {
+        window._mapsLoading = false;
+        if (window._mapsOnLoad) window._mapsOnLoad(new Error('script_load_failed'));
+      };
       document.head.appendChild(s);
     };
 
@@ -483,7 +494,20 @@ window.BoardDetailPage = {
         <p style="font-family:var(--font-display);font-style:italic;font-size:18px;font-weight:300;color:var(--ink-60)">Loading map…</p>
       </div>`;
 
-      loadMapsApi(() => initMap(places));
+      loadMapsApi((err) => {
+        const mapEl2 = el.querySelector('#pt-map');
+        if (err || !window.google?.maps) {
+          if (mapEl2) mapEl2.innerHTML = `
+            <div class="pt-map-placeholder">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="width:48px;height:48px;color:var(--ink-20)"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+              <p style="font-family:var(--font-display);font-style:italic;font-size:20px;font-weight:300;color:var(--ink-40)">Map couldn't load</p>
+              <span style="font-size:12px;color:var(--ink-40);text-align:center;max-width:280px">Enable <strong>Maps JavaScript API</strong> and <strong>Geocoding API</strong> in Google Cloud Console for key ending in <code style="background:var(--sand-deep);padding:2px 6px;border-radius:4px">...0KU</code></span>
+              <a href="https://console.cloud.google.com/apis/library/maps-backend.googleapis.com" target="_blank" class="btn btn-clay btn-sm" style="margin-top:8px;text-decoration:none">Enable in Google Cloud →</a>
+            </div>`;
+          return;
+        }
+        initMap(places);
+      });
     };
 
     const placeFormFields = (place = {}) => `
