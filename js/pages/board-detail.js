@@ -1248,7 +1248,9 @@ window.BoardDetailPage = {
           <label>Fly in <span style="font-size:10px;color:var(--ink-40);font-weight:400;text-transform:none">optional</span></label>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <input id="bst-fly-in-airport" placeholder="MAD, JFK…" value="${board.flyInAirport||''}" ${!isOwner?'disabled':''} style="padding:9px 12px;border:1px solid var(--ink-20);border-radius:12px;font-family:var(--font-body);font-size:13px;color:var(--ink);outline:none;background:${!isOwner?'var(--sand)':'var(--white)'}" />
-            <input id="bst-fly-in-time"    placeholder="2:30 PM"    value="${board.flyInTime||''}"    ${!isOwner?'disabled':''} style="padding:9px 12px;border:1px solid var(--ink-20);border-radius:12px;font-family:var(--font-body);font-size:13px;color:var(--ink);outline:none;background:${!isOwner?'var(--sand)':'var(--white)'}" />
+            ${isOwner
+              ? `<div style="display:flex;gap:4px;flex:1">${window.TimePicker.html('bst-fit', board.flyInTime||'')}</div>`
+              : `<input disabled value="${board.flyInTime||''}" style="flex:1;padding:9px 12px;border:1px solid var(--ink-20);border-radius:12px;font-family:var(--font-body);font-size:13px;color:var(--ink-40);background:var(--sand);outline:none" />`}
           </div>
           <p style="font-size:11px;color:var(--ink-40);margin-top:4px">Arrival airport code and landing time</p>
         </div>
@@ -1256,7 +1258,9 @@ window.BoardDetailPage = {
           <label>Fly out <span style="font-size:10px;color:var(--ink-40);font-weight:400;text-transform:none">optional</span></label>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <input id="bst-fly-out-airport" placeholder="BCN, LHR…" value="${board.flyOutAirport||''}" ${!isOwner?'disabled':''} style="padding:9px 12px;border:1px solid var(--ink-20);border-radius:12px;font-family:var(--font-body);font-size:13px;color:var(--ink);outline:none;background:${!isOwner?'var(--sand)':'var(--white)'}" />
-            <input id="bst-fly-out-time"    placeholder="10:00 AM"    value="${board.flyOutTime||''}"    ${!isOwner?'disabled':''} style="padding:9px 12px;border:1px solid var(--ink-20);border-radius:12px;font-family:var(--font-body);font-size:13px;color:var(--ink);outline:none;background:${!isOwner?'var(--sand)':'var(--white)'}" />
+            ${isOwner
+              ? `<div style="display:flex;gap:4px;flex:1">${window.TimePicker.html('bst-fot', board.flyOutTime||'')}</div>`
+              : `<input disabled value="${board.flyOutTime||''}" style="flex:1;padding:9px 12px;border:1px solid var(--ink-20);border-radius:12px;font-family:var(--font-body);font-size:13px;color:var(--ink-40);background:var(--sand);outline:none" />`}
           </div>
           <p style="font-size:11px;color:var(--ink-40);margin-top:4px">Departure airport code and flight time</p>
         </div>
@@ -1309,9 +1313,9 @@ window.BoardDetailPage = {
           startDate:      el.querySelector('#bst-start').value || null,
           endDate:        el.querySelector('#bst-end').value   || null,
           flyInAirport:   el.querySelector('#bst-fly-in-airport').value.trim().toUpperCase()  || null,
-          flyInTime:      el.querySelector('#bst-fly-in-time').value.trim()                   || null,
+          flyInTime:      window.TimePicker.read('bst-fit')                                  || null,
           flyOutAirport:  el.querySelector('#bst-fly-out-airport').value.trim().toUpperCase() || null,
-          flyOutTime:     el.querySelector('#bst-fly-out-time').value.trim()                  || null,
+          flyOutTime:     window.TimePicker.read('bst-fot')                                 || null,
         });
         btn.textContent = '✓ Saved!';
         setTimeout(() => { btn.textContent = 'Save Changes'; btn.disabled = false; }, 2000);

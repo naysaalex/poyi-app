@@ -132,9 +132,8 @@ window.NewTripModal = {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:15px;height:15px;flex-shrink:0"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
                 <input id="nt-fly-in-airport" placeholder="e.g. MAD, JFK, LAX" value="${flyInAirport}" style="font-size:13px" />
               </div>
-              <div class="dest-input-wrap" style="border-radius:12px">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:15px;height:15px;flex-shrink:0;color:var(--ink-40)"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                <input id="nt-fly-in-time" placeholder="e.g. 2:30 PM" value="${flyInTime}" style="font-size:13px" />
+              <div style="display:flex;gap:4px;align-items:center;flex:1">
+                ${window.TimePicker.html('nt-fit', flyInTime)}
               </div>
             </div>
             <p class="hint">Arrival airport code and landing time</p>
@@ -146,9 +145,8 @@ window.NewTripModal = {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:15px;height:15px;flex-shrink:0"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
                 <input id="nt-fly-out-airport" placeholder="e.g. BCN, LHR, NRT" value="${flyOutAirport}" style="font-size:13px" />
               </div>
-              <div class="dest-input-wrap" style="border-radius:12px">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:15px;height:15px;flex-shrink:0;color:var(--ink-40)"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                <input id="nt-fly-out-time" placeholder="e.g. 10:00 AM" value="${flyOutTime}" style="font-size:13px" />
+              <div style="display:flex;gap:4px;align-items:center;flex:1">
+                ${window.TimePicker.html('nt-fot', flyOutTime)}
               </div>
             </div>
             <p class="hint">Departure airport code and flight time</p>
@@ -207,9 +205,14 @@ window.NewTripModal = {
         content.querySelector('#nt-end').oninput    = e => { endDate   = e.target.value; };
         content.querySelector('#nt-end').onchange   = e => { endDate   = e.target.value; };
         content.querySelector('#nt-fly-in-airport').oninput  = e => { flyInAirport  = e.target.value.trim().toUpperCase(); };
-        content.querySelector('#nt-fly-in-time').oninput     = e => { flyInTime     = e.target.value.trim(); };
         content.querySelector('#nt-fly-out-airport').oninput = e => { flyOutAirport = e.target.value.trim().toUpperCase(); };
-        content.querySelector('#nt-fly-out-time').oninput    = e => { flyOutTime    = e.target.value.trim(); };
+        // Dropdowns: read combined value on any change
+        ['nt-fit-h','nt-fit-m','nt-fit-p'].forEach(id => {
+          document.getElementById(id)?.addEventListener('change', () => { flyInTime  = window.TimePicker.read('nt-fit'); });
+        });
+        ['nt-fot-h','nt-fot-m','nt-fot-p'].forEach(id => {
+          document.getElementById(id)?.addEventListener('change', () => { flyOutTime = window.TimePicker.read('nt-fot'); });
+        });
       }
 
       // Bind step 2 controls
@@ -251,15 +254,13 @@ window.NewTripModal = {
         const s = content.querySelector('#nt-start');
         const e = content.querySelector('#nt-end');
         const fia = content.querySelector('#nt-fly-in-airport');
-        const fit = content.querySelector('#nt-fly-in-time');
         const foa = content.querySelector('#nt-fly-out-airport');
-        const fot = content.querySelector('#nt-fly-out-time');
         if (s)   startDate     = s.value;
         if (e)   endDate       = e.value;
         if (fia) flyInAirport  = fia.value.trim().toUpperCase();
-        if (fit) flyInTime     = fit.value.trim();
+        flyInTime  = window.TimePicker.read('nt-fit')  || flyInTime;
         if (foa) flyOutAirport = foa.value.trim().toUpperCase();
-        if (fot) flyOutTime    = fot.value.trim();
+        flyOutTime = window.TimePicker.read('nt-fot') || flyOutTime;
       };
 
       content.querySelector('#nt-back')?.addEventListener('click', () => {
@@ -278,9 +279,9 @@ window.NewTripModal = {
         const endVal   = content.querySelector('#nt-end')?.value   || endDate   || null;
         // Read flight fields fresh at submit
         const flyInAirportVal  = content.querySelector('#nt-fly-in-airport')?.value.trim().toUpperCase()  || flyInAirport  || null;
-        const flyInTimeVal     = content.querySelector('#nt-fly-in-time')?.value.trim()                   || flyInTime     || null;
+        const flyInTimeVal     = window.TimePicker.read('nt-fit') || flyInTime  || null;
         const flyOutAirportVal = content.querySelector('#nt-fly-out-airport')?.value.trim().toUpperCase() || flyOutAirport || null;
-        const flyOutTimeVal    = content.querySelector('#nt-fly-out-time')?.value.trim()                  || flyOutTime    || null;
+        const flyOutTimeVal    = window.TimePicker.read('nt-fot') || flyOutTime || null;
 
         const boardId = await window.DB.createBoard(window.currentUser.uid, {
           title: title.trim(), privacy, destinations,
@@ -305,5 +306,40 @@ window.NewTripModal = {
     render();
 
     return modal;
+  },
+};
+
+// ── Time picker helper (shared by new trip modal and board settings) ──────────
+// Generates H / MM / AM-PM dropdowns from a stored "H:MM AM" string.
+window.TimePicker = {
+  // Build the three <select> elements and return an HTML string
+  html(prefix, currentVal) {
+    let selH = '', selM = '00', selP = 'AM';
+    if (currentVal) {
+      const m = currentVal.trim().match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+      if (m) { selH = m[1]; selM = m[2]; selP = m[3].toUpperCase(); }
+    }
+    const hours   = Array.from({ length: 12 }, (_, i) => String(i + 1));
+    const minutes = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
+    const s = 'padding:7px 6px;border:1px solid var(--ink-20);border-radius:10px;font-family:var(--font-body);font-size:12px;color:var(--ink);background:var(--white);outline:none;cursor:pointer;flex:1;min-width:0';
+    const hoursOpts   = hours.map(h => `<option value="${h}"${h===selH?' selected':''}>${h}</option>`).join('');
+    const minuteOpts  = minutes.map(m => `<option value="${m}"${m===selM?' selected':''}>${m}</option>`).join('');
+    return `
+      <select id="${prefix}-h" style="${s}">
+        <option value="">hr</option>${hoursOpts}
+      </select>
+      <select id="${prefix}-m" style="${s}">${minuteOpts}</select>
+      <select id="${prefix}-p" style="${s}">
+        <option value="AM"${selP==='AM'?' selected':''}>AM</option>
+        <option value="PM"${selP==='PM'?' selected':''}>PM</option>
+      </select>`;
+  },
+
+  // Read the three selects and return "H:MM AM" or null if hour not chosen
+  read(prefix) {
+    const h = document.getElementById(`${prefix}-h`)?.value;
+    const m = document.getElementById(`${prefix}-m`)?.value || '00';
+    const p = document.getElementById(`${prefix}-p`)?.value || 'AM';
+    return h ? `${h}:${m} ${p}` : null;
   },
 };
