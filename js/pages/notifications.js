@@ -49,7 +49,8 @@ window.NotificationsPage = {
 
         const msgs = {
           friendRequest:  'sent you a friend request',
-          friendAccepted: 'accepted your friend request',
+          friendAccepted: 'is now your friend! You follow each other.',
+          followed:       'started following you',
           boardInvite:    'invited you to a trip board',
         };
 
@@ -68,28 +69,25 @@ window.NotificationsPage = {
 
         // Action buttons for pending items
         const actionsEl = item.querySelector(`#na-${n.id}`);
-        if (!n.read && n.type === 'friendRequest') {
-          actionsEl.innerHTML = `
-            <button class="btn btn-clay btn-sm">Accept</button>
-            <button class="btn btn-sand btn-sm">Decline</button>`;
-          actionsEl.children[0].onclick = async () => {
-            const reqs = await window.DB.getFriendRequests(window.currentUser.uid);
-            const req  = reqs.find(r => r.from === n.fromUid);
-            if (req) {
-              await window.DB.acceptFriendRequest(req.id, n.fromUid, window.currentUser.uid);
-              await window.DB.markNotificationRead(n.id);
-              actionsEl.innerHTML = '<span style="font-size:12px;color:var(--leaf)">Now friends! 🎉</span>';
+        if (!n.read && n.type === 'followed') {
+          // Someone followed you — check status async then render button
+          (async () => {
+            const status = await window.DB.getFollowStatus(window.currentUser.uid, n.fromUid);
+            if (status === 'friends') {
+              actionsEl.innerHTML = '<span style="font-size:12px;color:var(--leaf)">Friends ✓</span>';
+            } else if (status === 'following') {
+              actionsEl.innerHTML = '<span style="font-size:12px;color:var(--ink-40)">Following</span>';
+            } else {
+              actionsEl.innerHTML = '<button class="btn btn-clay btn-sm">Follow back</button>';
+              actionsEl.children[0].onclick = async () => {
+                const result = await window.DB.followUser(window.currentUser.uid, n.fromUid);
+                await window.DB.markNotificationRead(n.id);
+                actionsEl.innerHTML = result?.mutual
+                  ? '<span style="font-size:12px;color:var(--leaf)">Friends ✓</span>'
+                  : '<span style="font-size:12px;color:var(--ink-40)">Following</span>';
+              };
             }
-          };
-          actionsEl.children[1].onclick = async () => {
-            const reqs = await window.DB.getFriendRequests(window.currentUser.uid);
-            const req  = reqs.find(r => r.from === n.fromUid);
-            if (req) {
-              await window.DB.declineFriendRequest(req.id);
-              await window.DB.markNotificationRead(n.id);
-              actionsEl.innerHTML = '<span style="font-size:12px;color:var(--ink-40)">Declined</span>';
-            }
-          };
+          })();
         } else if (!n.read && n.type === 'boardInvite') {
           actionsEl.innerHTML = `
             <button class="btn btn-clay btn-sm">Join Board</button>

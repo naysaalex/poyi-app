@@ -307,55 +307,159 @@ window.ProfilePage = {
     const doSearch = async () => {
       const q = container.querySelector('#friend-search').value.trim().toLowerCase();
       if (!q) return;
-      const results = await window.DB.searchUsers(q);
       const resultsEl = container.querySelector('#friend-results');
       resultsEl.innerHTML = '<p class="section-label" style="margin-bottom:8px">Results</p>';
-      results.filter(u => u.uid !== window.currentUser.uid).forEach(u => {
-        resultsEl.appendChild(this.friendRow(u, 'add'));
-      });
+      const results = await window.DB.searchUsers(q);
+      const filtered = results.filter(u => u.uid !== window.currentUser.uid);
+      if (!filtered.length) {
+        resultsEl.innerHTML += '<p style="font-size:13px;color:var(--ink-40)">No users found.</p>';
+        return;
+      }
+      // Load current user's follow status for each result in parallel
+      await Promise.all(filtered.map(async u => {
+        const status = await window.DB.getFollowStatus(window.currentUser.uid, u.uid);
+        resultsEl.appendChild(this.friendRow(u, status));
+      }));
     };
 
     container.querySelector('#friend-search-btn').onclick = doSearch;
     container.querySelector('#friend-search').onkeydown = e => { if (e.key === 'Enter') doSearch(); };
 
+    // Show friends list (mutual follows)
     window.DB.getFriends(window.currentUser.uid).then(friends => {
       const list = container.querySelector('#friends-list');
       if (!friends.length) {
-        list.innerHTML = '<p style="font-size:13px;color:var(--ink-40)">No friends yet — search to connect!</p>';
+        list.innerHTML = '<p style="font-size:13px;color:var(--ink-40)">No friends yet — follow someone and they follow back!</p>';
         return;
       }
-      friends.forEach(f => list.appendChild(this.friendRow(f, 'following')));
+      friends.forEach(f => list.appendChild(this.friendRow(f, 'friends')));
     });
   },
 
-  friendRow(user, action) {
+  // ── User row: shows avatar, name, follow button, view profile link ──
+  friendRow(user, status) {
+    // status: 'none' | 'following' | 'friends'
     const row = document.createElement('div');
     row.className = 'friend-row animate-fade-in';
+    row.style.cursor = 'pointer';
+
+    const badgeHtml = user.isPublic
+      ? '<span style="font-size:10px;padding:2px 7px;border-radius:999px;background:var(--leaf-light);color:var(--leaf);font-weight:500">Public</span>'
+      : '<span style="font-size:10px;padding:2px 7px;border-radius:999px;background:var(--ink-10);color:var(--ink-60);font-weight:500">Private</span>';
+
     row.innerHTML = `
-      <div class="friend-avatar">
+      <div class="friend-avatar" style="cursor:pointer" title="View profile">
         ${user.photoURL ? `<img src="${user.photoURL}" alt="">` : UI.initials(user.displayName)}
       </div>
-      <div class="friend-info">
+      <div class="friend-info" style="cursor:pointer" title="View profile">
         <span class="friend-name">${user.displayName || user.handle}</span>
-        <span class="friend-handle">@${user.handle}</span>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
+          <span class="friend-handle">@${user.handle}</span>
+          ${badgeHtml}
+        </div>
       </div>
       <div class="friend-action"></div>`;
 
+    // Clicking avatar or name opens profile view
+    const openProfile = () => this.openUserProfile(user);
+    row.querySelector('.friend-avatar').onclick = e => { e.stopPropagation(); openProfile(); };
+    row.querySelector('.friend-info').onclick   = e => { e.stopPropagation(); openProfile(); };
+
+    // Follow button
     const actionEl = row.querySelector('.friend-action');
-    if (action === 'add') {
+    if (status === 'friends') {
+      actionEl.innerHTML = '<span class="friends-tag">Friends ✓</span>';
+    } else if (status === 'following') {
       const btn = document.createElement('button');
-      btn.className = 'btn btn-clay btn-sm';
-      btn.textContent = 'Add';
-      btn.onclick = async () => {
-        await window.DB.sendFriendRequest(window.currentUser.uid, user.uid);
-        btn.textContent = 'Requested';
-        btn.className   = 'btn btn-sand btn-sm';
-        btn.disabled    = true;
-      };
+      btn.className = 'btn btn-sand btn-sm';
+      btn.textContent = 'Following';
+      btn.disabled = true;
       actionEl.appendChild(btn);
     } else {
-      actionEl.innerHTML = '<span class="friends-tag">Friends</span>';
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-clay btn-sm';
+      btn.textContent = 'Follow';
+      btn.onclick = async e => {
+        e.stopPropagation();
+        btn.disabled = true;
+        btn.textContent = '…';
+        const result = await window.DB.followUser(window.currentUser.uid, user.uid);
+        if (result?.mutual) {
+          btn.remove();
+          actionEl.innerHTML = '<span class="friends-tag">Friends ✓</span>';
+        } else {
+          btn.className   = 'btn btn-sand btn-sm';
+          btn.textContent = 'Following';
+        }
+      };
+      actionEl.appendChild(btn);
     }
+
     return row;
+  },
+
+  // ── Open another user's profile ──────────────────────────────
+  openUserProfile(user) {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(28,24,20,0.55);backdrop-filter:blur(4px);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px';
+
+    const panel = document.createElement('div');
+    panel.style.cssText = 'background:var(--cream);border-radius:24px;width:100%;max-width:480px;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--shadow-lg);animation:scaleIn 0.3s var(--ease) both';
+
+    // Header
+    const initials = UI.initials(user.displayName);
+    panel.innerHTML = `
+      <div style="display:flex;align-items:center;gap:14px;padding:20px 20px 16px;border-bottom:0.5px solid var(--ink-10);flex-shrink:0">
+        <div style="width:52px;height:52px;border-radius:50%;overflow:hidden;background:linear-gradient(135deg,var(--clay),var(--sky));display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--white);flex-shrink:0">
+          ${user.photoURL ? `<img src="${user.photoURL}" style="width:100%;height:100%;object-fit:cover">` : initials}
+        </div>
+        <div style="flex:1">
+          <div style="font-family:var(--font-display);font-size:20px;font-weight:400;color:var(--ink)">${user.displayName || user.handle}</div>
+          <div style="font-size:12px;color:var(--ink-40);margin-top:2px">@${user.handle}</div>
+          ${user.bio ? `<div style="font-size:12px;color:var(--ink-60);margin-top:4px">${user.bio}</div>` : ''}
+        </div>
+        <button id="up-close" style="width:32px;height:32px;border-radius:50%;border:none;background:var(--sand);color:var(--ink-60);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;flex-shrink:0">✕</button>
+      </div>
+      <div style="overflow-y:auto;flex:1;padding:16px 20px" id="up-body">
+        ${user.isPublic
+          ? '<p style="font-size:12px;color:var(--ink-40);text-transform:uppercase;letter-spacing:0.5px;font-weight:500;margin-bottom:12px">Boards</p><div id="up-boards" style="display:flex;flex-direction:column;gap:8px"><p style="font-size:13px;color:var(--ink-40)">Loading…</p></div>'
+          : `<div style="text-align:center;padding:40px 20px">
+              <div style="font-size:40px;margin-bottom:12px">🔒</div>
+              <p style="font-family:var(--font-display);font-style:italic;font-size:18px;font-weight:300;color:var(--ink-60);margin-bottom:8px">Private account</p>
+              <p style="font-size:13px;color:var(--ink-40)">Follow ${user.displayName || user.handle} and they follow you back to see their boards.</p>
+            </div>`}
+      </div>`;
+
+    const close = () => overlay.remove();
+    panel.querySelector('#up-close').onclick = close;
+    overlay.onclick = e => { if (e.target === overlay) close(); };
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    // Load public boards if public account
+    if (user.isPublic) {
+      window.DB.getUserPublicBoards(user.uid).then(boards => {
+        const boardsEl = panel.querySelector('#up-boards');
+        if (!boards.length) {
+          boardsEl.innerHTML = '<p style="font-size:13px;color:var(--ink-40)">No public boards yet.</p>';
+          return;
+        }
+        boardsEl.innerHTML = '';
+        boards.forEach(board => {
+          const card = document.createElement('div');
+          card.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;border:0.5px solid var(--ink-10);background:var(--white);cursor:pointer;transition:box-shadow 0.15s';
+          card.onmouseenter = () => card.style.boxShadow = 'var(--shadow-sm)';
+          card.onmouseleave = () => card.style.boxShadow = '';
+          card.innerHTML = `
+            <div style="width:48px;height:40px;border-radius:8px;flex-shrink:0;background:${UI.boardGradient(board.title)}"></div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${board.title}</div>
+              <div style="font-size:11px;color:var(--ink-40)">${(board.destinations||[]).slice(0,3).join(' · ') || 'No destinations'}</div>
+            </div>
+            <span style="font-size:11px;padding:2px 7px;border-radius:999px;background:var(--leaf-light);color:var(--leaf);font-weight:500">Public</span>`;
+          boardsEl.appendChild(card);
+        });
+      });
+    }
   },
 };
