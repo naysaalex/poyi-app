@@ -67,41 +67,61 @@ window.DB = {
   },
 
   // ── FRIENDS ───────────────────────────────────────────────
-  async sendFriendRequest(fromUid, toUid) {
-    await this.db.collection('friendRequests').add({
-      from: fromUid, to: toUid, status: 'pending',
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-    });
-    await this.db.collection('notifications').add({
-      userId: toUid, type: 'friendRequest', fromUid, read: false,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-    });
-  },
+  // ── Follow model ─────────────────────────────────────────────
+  // One-way follows. Mutual follow = friends.
+  // user.followingIds = people this user follows
+  // user.followerIds  = people who follow this user
+  // friendIds         = intersection (both follow each other)
 
-  async acceptFriendRequest(requestId, fromUid, toUid) {
-    await this.db.collection('friendRequests').doc(requestId).update({ status: 'accepted' });
-    await this.db.collection('users').doc(toUid).update({
-      friendIds:   firebase.firestore.FieldValue.arrayUnion(fromUid),
-      friendCount: firebase.firestore.FieldValue.increment(1),
-    });
+  async followUser(fromUid, toUid) {
+    // Add to following/followers arrays
     await this.db.collection('users').doc(fromUid).update({
-      friendIds:   firebase.firestore.FieldValue.arrayUnion(toUid),
-      friendCount: firebase.firestore.FieldValue.increment(1),
+      followingIds: firebase.firestore.FieldValue.arrayUnion(toUid),
     });
-    await this.db.collection('notifications').add({
-      userId: fromUid, type: 'friendAccepted', fromUid: toUid, read: false,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    await this.db.collection('users').doc(toUid).update({
+      followerIds: firebase.firestore.FieldValue.arrayUnion(fromUid),
     });
+    // Check if toUid already follows fromUid (mutual = friends)
+    const toProfile = await this.getUserProfile(toUid);
+    const isMutual  = (toProfile?.followingIds || []).includes(fromUid);
+    if (isMutual) {
+      // Both follow each other — add to friendIds on both
+      await this.db.collection('users').doc(fromUid).update({
+        friendIds: firebase.firestore.FieldValue.arrayUnion(toUid),
+        friendCount: firebase.firestore.FieldValue.increment(1),
+      });
+      await this.db.collection('users').doc(toUid).update({
+        friendIds: firebase.firestore.FieldValue.arrayUnion(fromUid),
+        friendCount: firebase.firestore.FieldValue.increment(1),
+      });
+      // Notify both that they are now friends
+      await this.db.collection('notifications').add({
+        userId: toUid, type: 'friendAccepted', fromUid, read: false,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      await this.db.collection('notifications').add({
+        userId: fromUid, type: 'friendAccepted', fromUid: toUid, read: false,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    } else {
+      // One-way — notify target that someone followed them
+      await this.db.collection('notifications').add({
+        userId: toUid, type: 'followed', fromUid, read: false,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+    return { mutual: isMutual };
   },
 
-  async declineFriendRequest(requestId) {
-    await this.db.collection('friendRequests').doc(requestId).update({ status: 'declined' });
-  },
-
-  async getFriendRequests(uid) {
-    const snap = await this.db.collection('friendRequests')
-      .where('to', '==', uid).where('status', '==', 'pending').get();
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  async getFollowStatus(fromUid, toUid) {
+    // Returns: 'none' | 'following' | 'friends'
+    const profile = await this.getUserProfile(fromUid);
+    if (!profile) return 'none';
+    const following = profile.followingIds || [];
+    const friends   = profile.friendIds    || [];
+    if (friends.includes(toUid))   return 'friends';
+    if (following.includes(toUid)) return 'following';
+    return 'none';
   },
 
   async getFriends(uid) {
@@ -109,6 +129,18 @@ window.DB = {
     if (!profile?.friendIds?.length) return [];
     return (await Promise.all(profile.friendIds.map(fid => this.getUserProfile(fid)))).filter(Boolean);
   },
+
+  async getFollowing(uid) {
+    const profile = await this.getUserProfile(uid);
+    if (!profile?.followingIds?.length) return [];
+    return (await Promise.all(profile.followingIds.map(fid => this.getUserProfile(fid)))).filter(Boolean);
+  },
+
+  // Legacy — kept for notifications tab compatibility
+  async getFriendRequests(uid) { return []; },
+  async acceptFriendRequest(requestId, fromUid, toUid) {},
+  async declineFriendRequest(requestId) {},
+  async sendFriendRequest(fromUid, toUid) { return this.followUser(fromUid, toUid); },
 
   // ── NOTIFICATIONS ─────────────────────────────────────────
   subscribeToNotifications(uid, cb) {
@@ -181,6 +213,14 @@ window.DB = {
     await this.db.collection('users').doc(uid).update({
       boardCount: firebase.firestore.FieldValue.increment(-1),
     });
+  },
+
+  async getUserPublicBoards(uid) {
+    const snap = await this.db.collection('boards')
+      .where('ownerId', '==', uid)
+      .where('privacy', '==', 'public')
+      .get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
   },
 
   subscribeToUserBoards(uid, cb) {
