@@ -398,68 +398,149 @@ window.ProfilePage = {
     return row;
   },
 
-  // ── Open another user's profile ──────────────────────────────
+  // ── Navigate to another user's full profile page ────────────
   openUserProfile(user) {
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(28,24,20,0.55);backdrop-filter:blur(4px);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px';
+    window.App.navigate('user-profile', { user });
+  },
+};
 
-    const panel = document.createElement('div');
-    panel.style.cssText = 'background:var(--cream);border-radius:24px;width:100%;max-width:480px;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--shadow-lg);animation:scaleIn 0.3s var(--ease) both';
+// ── UserProfilePage — read-only view of another user's profile ──
+window.UserProfilePage = {
+  unsubs: [],
 
-    // Header
+  destroy() { this.unsubs.forEach(u => u()); this.unsubs = []; },
+
+  render({ user }) {
+    const el = document.createElement('div');
+    el.className = 'profile-page';
+
     const initials = UI.initials(user.displayName);
-    panel.innerHTML = `
-      <div style="display:flex;align-items:center;gap:14px;padding:20px 20px 16px;border-bottom:0.5px solid var(--ink-10);flex-shrink:0">
-        <div style="width:52px;height:52px;border-radius:50%;overflow:hidden;background:linear-gradient(135deg,var(--clay),var(--sky));display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--white);flex-shrink:0">
-          ${user.photoURL ? `<img src="${user.photoURL}" style="width:100%;height:100%;object-fit:cover">` : initials}
-        </div>
-        <div style="flex:1">
-          <div style="font-family:var(--font-display);font-size:20px;font-weight:400;color:var(--ink)">${user.displayName || user.handle}</div>
-          <div style="font-size:12px;color:var(--ink-40);margin-top:2px">@${user.handle}</div>
-          ${user.bio ? `<div style="font-size:12px;color:var(--ink-60);margin-top:4px">${user.bio}</div>` : ''}
-        </div>
-        <button id="up-close" style="width:32px;height:32px;border-radius:50%;border:none;background:var(--sand);color:var(--ink-60);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;flex-shrink:0">✕</button>
+
+    el.innerHTML = `
+      <!-- Header with back arrow -->
+      <div class="settings-header" style="padding:16px 20px 14px">
+        <button class="settings-back-btn" id="up-back">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+        <h1 class="settings-title" style="font-size:20px">${user.displayName || user.handle}</h1>
       </div>
-      <div style="overflow-y:auto;flex:1;padding:16px 20px" id="up-body">
-        ${user.isPublic
-          ? '<p style="font-size:12px;color:var(--ink-40);text-transform:uppercase;letter-spacing:0.5px;font-weight:500;margin-bottom:12px">Boards</p><div id="up-boards" style="display:flex;flex-direction:column;gap:8px"><p style="font-size:13px;color:var(--ink-40)">Loading…</p></div>'
-          : `<div style="text-align:center;padding:40px 20px">
-              <div style="font-size:40px;margin-bottom:12px">🔒</div>
-              <p style="font-family:var(--font-display);font-style:italic;font-size:18px;font-weight:300;color:var(--ink-60);margin-bottom:8px">Private account</p>
-              <p style="font-size:13px;color:var(--ink-40)">Follow ${user.displayName || user.handle} and they follow you back to see their boards.</p>
-            </div>`}
+
+      <!-- Profile hero -->
+      <div class="profile-hero" style="border-bottom:0.5px solid var(--ink-10)">
+        <div style="flex-shrink:0">
+          <div style="width:72px;height:72px;border-radius:50%;overflow:hidden;background:linear-gradient(135deg,var(--clay),var(--sky));display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--white)">
+            ${user.photoURL ? `<img src="${user.photoURL}" style="width:100%;height:100%;object-fit:cover" alt="">` : initials}
+          </div>
+        </div>
+        <div class="profile-info">
+          <h1 class="profile-name">${user.displayName || user.handle}</h1>
+          <p class="profile-handle">@${user.handle}</p>
+          ${user.bio ? `<p class="profile-bio">${user.bio}</p>` : ''}
+          <div class="profile-stats">
+            <div><span class="stat-num" id="up-board-count">—</span><span class="stat-label">boards</span></div>
+          </div>
+          ${UI.privacyBadge(user.isPublic ? 'public' : 'private')}
+        </div>
+        <!-- Follow button -->
+        <div id="up-follow-action" style="flex-shrink:0;align-self:flex-start;margin-top:4px"></div>
+      </div>
+
+      <!-- Content -->
+      <div class="profile-content" id="up-content"></div>`;
+
+    // Back button
+    el.querySelector('#up-back').onclick = () => window.App.navigate('profile');
+
+    // Follow button
+    const followEl = el.querySelector('#up-follow-action');
+    window.DB.getFollowStatus(window.currentUser.uid, user.uid).then(status => {
+      this._renderFollowBtn(followEl, user, status);
+    });
+
+    // Content area
+    const content = el.querySelector('#up-content');
+    if (!user.isPublic) {
+      content.innerHTML = `
+        <div class="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="width:48px;height:48px;color:var(--ink-20)">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          <p>Private account</p>
+          <span>Follow ${user.displayName || user.handle} and they follow you back to see their boards.</span>
+        </div>`;
+      return el;
+    }
+
+    // Public account — load boards
+    content.innerHTML = `
+      <div class="profile-boards-header">
+        <span class="section-label">Public Boards</span>
+      </div>
+      <div class="boards-grid" id="up-boards">
+        <div class="skeleton" style="aspect-ratio:4/3;border-radius:12px"></div>
+        <div class="skeleton" style="aspect-ratio:4/3;border-radius:12px"></div>
       </div>`;
 
-    const close = () => overlay.remove();
-    panel.querySelector('#up-close').onclick = close;
-    overlay.onclick = e => { if (e.target === overlay) close(); };
-    overlay.appendChild(panel);
-    document.body.appendChild(overlay);
+    window.DB.getUserPublicBoards(user.uid).then(boards => {
+      const grid = content.querySelector('#up-boards');
+      if (!grid) return;
 
-    // Load public boards if public account
-    if (user.isPublic) {
-      window.DB.getUserPublicBoards(user.uid).then(boards => {
-        const boardsEl = panel.querySelector('#up-boards');
-        if (!boards.length) {
-          boardsEl.innerHTML = '<p style="font-size:13px;color:var(--ink-40)">No public boards yet.</p>';
-          return;
-        }
-        boardsEl.innerHTML = '';
-        boards.forEach(board => {
-          const card = document.createElement('div');
-          card.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;border:0.5px solid var(--ink-10);background:var(--white);cursor:pointer;transition:box-shadow 0.15s';
-          card.onmouseenter = () => card.style.boxShadow = 'var(--shadow-sm)';
-          card.onmouseleave = () => card.style.boxShadow = '';
-          card.innerHTML = `
-            <div style="width:48px;height:40px;border-radius:8px;flex-shrink:0;background:${UI.boardGradient(board.title)}"></div>
-            <div style="flex:1;min-width:0">
-              <div style="font-size:13px;font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${board.title}</div>
-              <div style="font-size:11px;color:var(--ink-40)">${(board.destinations||[]).slice(0,3).join(' · ') || 'No destinations'}</div>
-            </div>
-            <span style="font-size:11px;padding:2px 7px;border-radius:999px;background:var(--leaf-light);color:var(--leaf);font-weight:500">Public</span>`;
-          boardsEl.appendChild(card);
+      // Update board count in hero
+      const countEl = el.querySelector('#up-board-count');
+      if (countEl) countEl.textContent = boards.length;
+
+      if (!boards.length) {
+        grid.innerHTML = '<p style="font-size:13px;color:var(--ink-40);grid-column:1/-1">No public boards yet.</p>';
+        return;
+      }
+      grid.innerHTML = '';
+      boards.forEach(board => {
+        const card = document.createElement('div');
+        card.className = 'board-card animate-fade-in';
+        card.innerHTML = `
+          <div class="board-card-thumb" style="background:${UI.boardGradient(board.title)};position:relative">
+            ${UI.privacyBadge(board.privacy)}
+          </div>
+          <div class="board-card-meta">
+            <p class="board-card-name">${board.title}</p>
+            <p class="board-card-dest">${(board.destinations||[]).slice(0,3).join(' · ') || 'No destinations'}</p>
+            ${board.startDate ? `<p style="font-size:10px;color:var(--ink-40);margin-top:3px">${board.startDate}${board.endDate ? ' → ' + board.endDate : ''}</p>` : ''}
+          </div>`;
+        // Navigate to board in view-only mode
+        card.onclick = () => window.App.navigate('board-detail', {
+          boardId:  board.id,
+          viewOnly: true,
         });
+        grid.appendChild(card);
       });
+    });
+
+    return el;
+  },
+
+  _renderFollowBtn(container, user, status) {
+    container.innerHTML = '';
+    if (status === 'friends') {
+      container.innerHTML = '<span class="friends-tag">Friends ✓</span>';
+    } else if (status === 'following') {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-sand btn-sm';
+      btn.textContent = 'Following';
+      btn.disabled = true;
+      container.appendChild(btn);
+    } else {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-clay btn-sm';
+      btn.textContent = 'Follow';
+      btn.onclick = async () => {
+        btn.disabled = true; btn.textContent = '…';
+        const result = await window.DB.followUser(window.currentUser.uid, user.uid);
+        this._renderFollowBtn(container, user, result?.mutual ? 'friends' : 'following');
+      };
+      container.appendChild(btn);
     }
   },
 };

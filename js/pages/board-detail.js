@@ -5,7 +5,8 @@ window.BoardDetailPage = {
 
   destroy() { this.unsubs.forEach(u => u()); this.unsubs = []; },
 
-  render({ boardId }) {
+  render({ boardId, viewOnly = false }) {
+    this._viewOnly = viewOnly;
     const el = document.createElement('div');
     el.className = 'bdp';
     el.innerHTML = `
@@ -24,7 +25,10 @@ window.BoardDetailPage = {
       </div>
       <div class="bdp-body" id="bdp-body"></div>`;
 
-    el.querySelector('#bdp-back').onclick = () => window.App.navigate('boards');
+    el.querySelector('#bdp-back').onclick = () => {
+      if (this._viewOnly) window.history.back ? history.back() : window.App.navigate('discover');
+      else window.App.navigate('boards');
+    };
 
     const unsub = window.DB.subscribeToBoard(boardId, board => {
       if (!board) return;
@@ -107,7 +111,8 @@ window.BoardDetailPage = {
       const tab = this.activeTab;
       // FIX: canEdit = owner OR collaborator
       const uid = window.currentUser?.uid;
-      const canEdit = board.ownerId === uid || (board.collaborators || []).includes(uid);
+      const canEdit = !this._viewOnly &&
+        (board.ownerId === uid || (board.collaborators || []).includes(uid));
 
       if (tab === 'vision')    body.appendChild(this.renderVisionTab(board, canEdit));
       if (tab === 'places')    body.appendChild(this.renderPlacesTab(board, canEdit));
