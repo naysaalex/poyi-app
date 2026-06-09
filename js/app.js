@@ -97,6 +97,11 @@ window.App = {
         el = pageObj.render(params);
         break;
 
+      case 'user-profile':
+        pageObj = window.UserProfilePage;
+        el = pageObj.render(params);
+        break;
+
       default:
         el = document.createElement('div');
         el.style.cssText = 'flex:1;display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-style:italic;font-size:22px;color:var(--ink-40)';
