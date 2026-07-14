@@ -82,17 +82,26 @@ window.DB = {
 
   async getFollowStatus(fromUid, toUid) {
     // Returns: 'none' | 'requested' | 'following' | 'friends'
+    // First check the profile arrays — no extra Firestore query needed.
     const profile = await this.getUserProfile(fromUid);
     if (!profile) return 'none';
-    if ((profile.friendIds    || []).includes(toUid))   return 'friends';
-    if ((profile.followingIds || []).includes(toUid))   return 'following';
-    // Check for pending request (private accounts)
-    const reqSnap = await this.db.collection('followRequests')
-      .where('from', '==', fromUid)
-      .where('to',   '==', toUid)
-      .where('status', '==', 'pending')
-      .limit(1).get();
-    if (!reqSnap.empty) return 'requested';
+    if ((profile.friendIds    || []).includes(toUid)) return 'friends';
+    if ((profile.followingIds || []).includes(toUid)) return 'following';
+    // Only check followRequests if the target is a private user
+    // (avoids composite index requirement on public-user searches)
+    const toProfile = await this.getUserProfile(toUid);
+    if (!toProfile || toProfile.isPublic) return 'none';
+    try {
+      const reqSnap = await this.db.collection('followRequests')
+        .where('from', '==', fromUid)
+        .where('to',   '==', toUid)
+        .where('status', '==', 'pending')
+        .limit(1).get();
+      if (!reqSnap.empty) return 'requested';
+    } catch (e) {
+      // composite index not yet created — treat as 'none'
+      console.warn('followRequests index missing, treating as none:', e.code);
+    }
     return 'none';
   },
 
