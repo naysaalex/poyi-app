@@ -24,7 +24,13 @@ service cloud.firestore {
     match /friendRequests/{id} {
       allow read:   if signedIn() && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
       allow create: if signedIn();
-      allow update: if signedIn() && resource.data.to == request.auth.uid;
+      allow update: if signedIn() && (resource.data.to == request.auth.uid || resource.data.from == request.auth.uid);
+    }
+
+    match /followRequests/{id} {
+      allow read:   if signedIn() && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow create: if signedIn();
+      allow update: if signedIn() && (resource.data.to == request.auth.uid || resource.data.from == request.auth.uid);
     }
 
     match /notifications/{id} {
