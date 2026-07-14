@@ -48,30 +48,30 @@ window.DB = {
   },
 
   async searchUsers(term) {
-    // Firestore doesn't support OR queries or full-text search.
-    // Strategy: run a handle prefix query AND a displayName prefix query,
-    // merge results client-side, deduplicate by uid.
-    const t = term.toLowerCase().trim();
+    const t    = term.trim();
+    const tLow = t.toLowerCase();
+    const tCap = t.charAt(0).toUpperCase() + t.slice(1);
+    if (!t) return [];
+    const S = '\uf8ff';
 
-    const [handleSnap, nameSnap] = await Promise.all([
-      this.db.collection('users')
-        .where('handle', '>=', t)
-        .where('handle', '<=', t + '')
-        .limit(20).get(),
-      this.db.collection('users')
-        .where('displayName', '>=', t)
-        .where('displayName', '<=', t + '')
-        .limit(20).get(),
+    // Four queries: lowercase + capitalised, across handle + displayName.
+    // Needed because Firestore range queries are case-sensitive.
+    const snaps = await Promise.all([
+      this.db.collection('users').where('handle', '>=', tLow).where('handle', '<=', tLow + S).limit(10).get(),
+      this.db.collection('users').where('handle', '>=', tCap).where('handle', '<=', tCap + S).limit(10).get(),
+      this.db.collection('users').where('displayName', '>=', tLow).where('displayName', '<=', tLow + S).limit(10).get(),
+      this.db.collection('users').where('displayName', '>=', tCap).where('displayName', '<=', tCap + S).limit(10).get(),
     ]);
 
     const seen = new Set();
     const results = [];
-    [...handleSnap.docs, ...nameSnap.docs].forEach(d => {
+    snaps.forEach(snap => snap.docs.forEach(d => {
       if (!seen.has(d.id)) {
         seen.add(d.id);
-        results.push({ id: d.id, ...d.data() });
+        const data = d.data();
+        results.push({ id: d.id, uid: data.uid || d.id, ...data });
       }
-    });
+    }));
     return results;
   },
 
