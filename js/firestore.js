@@ -205,25 +205,23 @@ window.DB = {
   },
 
   async unfollowUser(fromUid, toUid) {
-    // Remove from following/followers
-    await this.db.collection('users').doc(fromUid).update({
+    // Check if they were friends BEFORE removing (need original data)
+    const fromProfile = await this.getUserProfile(fromUid);
+    const wasFriend   = (fromProfile?.friendIds || []).includes(toUid);
+
+    // Remove from following/followers/friends on both sides
+    const batch = this.db.batch();
+    batch.update(this.db.collection('users').doc(fromUid), {
       followingIds: firebase.firestore.FieldValue.arrayRemove(toUid),
       friendIds:    firebase.firestore.FieldValue.arrayRemove(toUid),
+      ...(wasFriend ? { friendCount: firebase.firestore.FieldValue.increment(-1) } : {}),
     });
-    await this.db.collection('users').doc(toUid).update({
+    batch.update(this.db.collection('users').doc(toUid), {
       followerIds: firebase.firestore.FieldValue.arrayRemove(fromUid),
       friendIds:   firebase.firestore.FieldValue.arrayRemove(fromUid),
+      ...(wasFriend ? { friendCount: firebase.firestore.FieldValue.increment(-1) } : {}),
     });
-    // Decrement friendCount if they were friends
-    const fromProfile = await this.getUserProfile(fromUid);
-    if ((fromProfile?.friendIds || []).includes(toUid)) {
-      await this.db.collection('users').doc(fromUid).update({
-        friendCount: firebase.firestore.FieldValue.increment(-1),
-      });
-      await this.db.collection('users').doc(toUid).update({
-        friendCount: firebase.firestore.FieldValue.increment(-1),
-      });
-    }
+    await batch.commit();
   },
 
   async cancelFollowRequest(fromUid, toUid) {
