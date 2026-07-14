@@ -48,31 +48,19 @@ window.DB = {
   },
 
   async searchUsers(term) {
-    const t    = term.trim();
-    const tLow = t.toLowerCase();
-    const tCap = t.charAt(0).toUpperCase() + t.slice(1);
+    const t = term.trim().toLowerCase();
     if (!t) return [];
-    const S = '\uf8ff';
 
-    // Four queries: lowercase + capitalised, across handle + displayName.
-    // Needed because Firestore range queries are case-sensitive.
-    const snaps = await Promise.all([
-      this.db.collection('users').where('handle', '>=', tLow).where('handle', '<=', tLow + S).limit(10).get(),
-      this.db.collection('users').where('handle', '>=', tCap).where('handle', '<=', tCap + S).limit(10).get(),
-      this.db.collection('users').where('displayName', '>=', tLow).where('displayName', '<=', tLow + S).limit(10).get(),
-      this.db.collection('users').where('displayName', '>=', tCap).where('displayName', '<=', tCap + S).limit(10).get(),
-    ]);
-
-    const seen = new Set();
-    const results = [];
-    snaps.forEach(snap => snap.docs.forEach(d => {
-      if (!seen.has(d.id)) {
-        seen.add(d.id);
-        const data = d.data();
-        results.push({ id: d.id, uid: data.uid || d.id, ...data });
-      }
-    }));
-    return results;
+    // Fetch all users and filter client-side.
+    // Avoids Firestore index requirements and case-sensitivity issues,
+    // and matches the term anywhere in handle or displayName (not just prefix).
+    const snap = await this.db.collection('users').limit(500).get();
+    return snap.docs
+      .map(d => { const data = d.data(); return { id: d.id, uid: data.uid || d.id, ...data }; })
+      .filter(u =>
+        (u.handle      || '').toLowerCase().includes(t) ||
+        (u.displayName || '').toLowerCase().includes(t)
+      );
   },
 
   subscribeToUser(uid, cb) {
