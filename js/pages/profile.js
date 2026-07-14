@@ -35,7 +35,12 @@ window.ProfilePage = {
           <p class="profile-handle">@${user.handle || ''}</p>
           ${user.bio ? `<p class="profile-bio">${user.bio}</p>` : ''}
           <div class="profile-stats">
-            <div><span class="stat-num" id="friend-count">0</span><span class="stat-label">friends</span></div>
+            <div style="cursor:pointer" onclick="window.ProfilePage.activeTab='followers';document.querySelector('[data-tab=followers]').click()">
+              <span class="stat-num" id="follower-count">0</span><span class="stat-label">followers</span>
+            </div>
+            <div style="cursor:pointer" onclick="window.ProfilePage.activeTab='following';document.querySelector('[data-tab=following]').click()">
+              <span class="stat-num" id="following-count">0</span><span class="stat-label">following</span>
+            </div>
             <div><span class="stat-num" id="board-count">0</span><span class="stat-label">boards</span></div>
           </div>
           ${UI.privacyBadge(user.isPublic ? 'public' : 'private')}
@@ -49,8 +54,9 @@ window.ProfilePage = {
       </div>
 
       <div class="profile-tabs">
-        <button class="profile-tab ${this.activeTab==='boards'?'active':''}" data-tab="boards">Boards</button>
-        <button class="profile-tab ${this.activeTab==='friends'?'active':''}" data-tab="friends">Friends</button>
+        <button class="profile-tab ${this.activeTab==='boards'   ?'active':''}" data-tab="boards">Boards</button>
+        <button class="profile-tab ${this.activeTab==='followers'?'active':''}" data-tab="followers">Followers</button>
+        <button class="profile-tab ${this.activeTab==='following'?'active':''}" data-tab="following">Following</button>
       </div>
       <div class="profile-content" id="profile-content"></div>`;
 
@@ -80,8 +86,11 @@ window.ProfilePage = {
     this.unsubs.push(boardUnsub);
 
     const profUnsub = window.DB.subscribeToUser(window.currentUser.uid, prof => {
-      const c = document.getElementById('friend-count');
-      if (c && prof) c.textContent = prof.friendCount || 0;
+      if (!prof) return;
+      const fc  = document.getElementById('follower-count');
+      const fwc = document.getElementById('following-count');
+      if (fc)  fc.textContent  = (prof.followerIds  || []).length;
+      if (fwc) fwc.textContent = (prof.followingIds || []).length;
     });
     this.unsubs.push(profUnsub);
 
@@ -246,8 +255,9 @@ window.ProfilePage = {
 
   renderTab(tab, container) {
     container.innerHTML = '';
-    if (tab === 'boards')  this.renderBoards(container);
-    if (tab === 'friends') this.renderFriends(container);
+    if (tab === 'boards')    this.renderBoards(container);
+    if (tab === 'followers') this.renderUserList(container, 'followers', window.currentUser.uid);
+    if (tab === 'following') this.renderUserList(container, 'following', window.currentUser.uid);
   },
 
   renderBoards(container) {
@@ -291,23 +301,31 @@ window.ProfilePage = {
     this.unsubs.push(unsub);
   },
 
-  renderFriends(container) {
+  // ── Followers / Following list (shared renderer) ─────────
+  renderUserList(container, mode, uid) {
+    // mode: 'followers' | 'following'
+    const isOwnProfile = uid === window.currentUser.uid;
+    const emptyMsg = mode === 'followers'
+      ? 'No followers yet.'
+      : 'Not following anyone yet.';
+
     container.innerHTML = `
       <div style="display:flex;gap:8px;margin-bottom:16px">
         <div class="search-bar" style="flex:1">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-          <input id="friend-search" placeholder="Find friends by handle..." />
+          <input id="user-search" placeholder="Search by handle..." />
         </div>
-        <button class="btn btn-clay btn-sm" id="friend-search-btn">Search</button>
+        <button class="btn btn-clay btn-sm" id="user-search-btn">Search</button>
       </div>
-      <div id="friend-results"></div>
-      <p class="section-label" style="margin-bottom:8px">Your Friends</p>
-      <div id="friends-list"></div>`;
+      <div id="search-results"></div>
+      <p class="section-label" style="margin-bottom:8px">${mode === 'followers' ? 'Followers' : 'Following'}</p>
+      <div id="user-list"><p style="font-size:13px;color:var(--ink-40)">Loading…</p></div>`;
 
+    // Search
     const doSearch = async () => {
-      const q = container.querySelector('#friend-search').value.trim().toLowerCase();
+      const q = container.querySelector('#user-search').value.trim().toLowerCase();
       if (!q) return;
-      const resultsEl = container.querySelector('#friend-results');
+      const resultsEl = container.querySelector('#search-results');
       resultsEl.innerHTML = '<p class="section-label" style="margin-bottom:8px">Results</p>';
       const results = await window.DB.searchUsers(q);
       const filtered = results.filter(u => u.uid !== window.currentUser.uid);
@@ -315,88 +333,144 @@ window.ProfilePage = {
         resultsEl.innerHTML += '<p style="font-size:13px;color:var(--ink-40)">No users found.</p>';
         return;
       }
-      // Load current user's follow status for each result in parallel
       await Promise.all(filtered.map(async u => {
         const status = await window.DB.getFollowStatus(window.currentUser.uid, u.uid);
-        resultsEl.appendChild(this.friendRow(u, status));
+        resultsEl.appendChild(this.userRow(u, status));
       }));
     };
+    container.querySelector('#user-search-btn').onclick = doSearch;
+    container.querySelector('#user-search').onkeydown = e => { if (e.key === 'Enter') doSearch(); };
 
-    container.querySelector('#friend-search-btn').onclick = doSearch;
-    container.querySelector('#friend-search').onkeydown = e => { if (e.key === 'Enter') doSearch(); };
+    // Load list
+    const load = mode === 'followers'
+      ? window.DB.getFollowers(uid)
+      : window.DB.getFollowing(uid);
 
-    // Show friends list (mutual follows)
-    window.DB.getFriends(window.currentUser.uid).then(friends => {
-      const list = container.querySelector('#friends-list');
-      if (!friends.length) {
-        list.innerHTML = '<p style="font-size:13px;color:var(--ink-40)">No friends yet — follow someone and they follow back!</p>';
+    load.then(async users => {
+      const listEl = container.querySelector('#user-list');
+      if (!listEl) return;
+      if (!users.length) {
+        listEl.innerHTML = `<p style="font-size:13px;color:var(--ink-40)">${emptyMsg}</p>`;
         return;
       }
-      friends.forEach(f => list.appendChild(this.friendRow(f, 'friends')));
+      listEl.innerHTML = '';
+      await Promise.all(users.map(async u => {
+        const status = await window.DB.getFollowStatus(window.currentUser.uid, u.uid);
+        listEl.appendChild(this.userRow(u, status));
+      }));
     });
   },
 
-  // ── User row: shows avatar, name, follow button, view profile link ──
-  friendRow(user, status) {
-    // status: 'none' | 'following' | 'friends'
+  // ── User row ─────────────────────────────────────────────────
+  // status: 'none' | 'requested' | 'following' | 'friends'
+  userRow(user, status) {
     const row = document.createElement('div');
     row.className = 'friend-row animate-fade-in';
-    row.style.cursor = 'pointer';
 
-    const badgeHtml = user.isPublic
+    const privacyBadge = user.isPublic
       ? '<span style="font-size:10px;padding:2px 7px;border-radius:999px;background:var(--leaf-light);color:var(--leaf);font-weight:500">Public</span>'
       : '<span style="font-size:10px;padding:2px 7px;border-radius:999px;background:var(--ink-10);color:var(--ink-60);font-weight:500">Private</span>';
+    const mutualBadge = status === 'friends'
+      ? '<span style="font-size:10px;padding:2px 7px;border-radius:999px;background:rgba(74,103,65,0.12);color:var(--leaf);font-weight:500">Friends</span>'
+      : '';
 
     row.innerHTML = `
       <div class="friend-avatar" style="cursor:pointer" title="View profile">
         ${user.photoURL ? `<img src="${user.photoURL}" alt="">` : UI.initials(user.displayName)}
       </div>
-      <div class="friend-info" style="cursor:pointer" title="View profile">
+      <div class="friend-info" style="cursor:pointer;flex:1" title="View profile">
         <span class="friend-name">${user.displayName || user.handle}</span>
-        <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
+        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:2px">
           <span class="friend-handle">@${user.handle}</span>
-          ${badgeHtml}
+          ${privacyBadge}
+          ${mutualBadge}
         </div>
       </div>
-      <div class="friend-action"></div>`;
+      <div class="friend-action" style="flex-shrink:0"></div>`;
 
-    // Clicking avatar or name opens profile view
     const openProfile = () => this.openUserProfile(user);
     row.querySelector('.friend-avatar').onclick = e => { e.stopPropagation(); openProfile(); };
     row.querySelector('.friend-info').onclick   = e => { e.stopPropagation(); openProfile(); };
 
-    // Follow button
-    const actionEl = row.querySelector('.friend-action');
-    if (status === 'friends') {
-      actionEl.innerHTML = '<span class="friends-tag">Friends ✓</span>';
-    } else if (status === 'following') {
-      const btn = document.createElement('button');
-      btn.className = 'btn btn-sand btn-sm';
-      btn.textContent = 'Following';
-      btn.disabled = true;
-      actionEl.appendChild(btn);
-    } else {
-      const btn = document.createElement('button');
-      btn.className = 'btn btn-clay btn-sm';
-      btn.textContent = 'Follow';
-      btn.onclick = async e => {
-        e.stopPropagation();
-        btn.disabled = true;
-        btn.textContent = '…';
-        const result = await window.DB.followUser(window.currentUser.uid, user.uid);
-        if (result?.mutual) {
-          btn.remove();
-          actionEl.innerHTML = '<span class="friends-tag">Friends ✓</span>';
-        } else {
-          btn.className   = 'btn btn-sand btn-sm';
-          btn.textContent = 'Following';
-        }
-      };
-      actionEl.appendChild(btn);
-    }
-
+    this._renderRowAction(row.querySelector('.friend-action'), user, status);
     return row;
   },
+
+  _renderRowAction(container, user, status) {
+    container.innerHTML = '';
+    const uid = window.currentUser.uid;
+
+    if (status === 'friends' || status === 'following') {
+      // Unfollow button
+      const btn = document.createElement('button');
+      btn.className   = 'btn btn-sand btn-sm';
+      btn.textContent = status === 'friends' ? 'Friends ✓' : 'Following';
+      let confirmState = false;
+      btn.onclick = async e => {
+        e.stopPropagation();
+        if (!confirmState) {
+          confirmState = true;
+          btn.textContent = 'Unfollow?';
+          btn.classList.add('btn-danger-outline');
+          setTimeout(() => {
+            if (confirmState) {
+              confirmState = false;
+              btn.textContent = status === 'friends' ? 'Friends ✓' : 'Following';
+              btn.classList.remove('btn-danger-outline');
+            }
+          }, 3000);
+          return;
+        }
+        btn.disabled = true; btn.textContent = '…';
+        await window.DB.unfollowUser(uid, user.uid);
+        this._renderRowAction(container, user, 'none');
+      };
+      container.appendChild(btn);
+
+    } else if (status === 'requested') {
+      // Pending request to private user — allow cancellation
+      const btn = document.createElement('button');
+      btn.className   = 'btn btn-sand btn-sm';
+      btn.textContent = 'Requested';
+      let confirmState = false;
+      btn.onclick = async e => {
+        e.stopPropagation();
+        if (!confirmState) {
+          confirmState = true;
+          btn.textContent = 'Cancel request?';
+          btn.classList.add('btn-danger-outline');
+          setTimeout(() => {
+            if (confirmState) {
+              confirmState = false;
+              btn.textContent = 'Requested';
+              btn.classList.remove('btn-danger-outline');
+            }
+          }, 3000);
+          return;
+        }
+        btn.disabled = true; btn.textContent = '…';
+        await window.DB.cancelFollowRequest(uid, user.uid);
+        this._renderRowAction(container, user, 'none');
+      };
+      container.appendChild(btn);
+
+    } else {
+      // Not following — show Follow button
+      const btn = document.createElement('button');
+      btn.className   = 'btn btn-clay btn-sm';
+      btn.textContent = user.isPublic ? 'Follow' : 'Request';
+      btn.onclick = async e => {
+        e.stopPropagation();
+        btn.disabled = true; btn.textContent = '…';
+        const result = await window.DB.followUser(uid, user.uid);
+        this._renderRowAction(container, user, result?.status || 'following');
+      };
+      container.appendChild(btn);
+    }
+  },
+
+  // Legacy alias kept for any older references
+  friendRow(user, status) { return this.userRow(user, status); },
 
   // ── Navigate to another user's full profile page ────────────
   openUserProfile(user) {
@@ -439,6 +513,8 @@ window.UserProfilePage = {
           <p class="profile-handle">@${user.handle}</p>
           ${user.bio ? `<p class="profile-bio">${user.bio}</p>` : ''}
           <div class="profile-stats">
+            <div><span class="stat-num" id="up-follower-count">—</span><span class="stat-label">followers</span></div>
+            <div><span class="stat-num" id="up-following-count">—</span><span class="stat-label">following</span></div>
             <div><span class="stat-num" id="up-board-count">—</span><span class="stat-label">boards</span></div>
           </div>
           ${UI.privacyBadge(user.isPublic ? 'public' : 'private')}
@@ -452,6 +528,15 @@ window.UserProfilePage = {
 
     // Back button
     el.querySelector('#up-back').onclick = () => window.App.navigate('profile');
+
+    // Load live profile for counts
+    window.DB.subscribeToUser(user.uid, prof => {
+      if (!prof) return;
+      const fc  = el.querySelector('#up-follower-count');
+      const fwc = el.querySelector('#up-following-count');
+      if (fc)  fc.textContent  = (prof.followerIds  || []).length;
+      if (fwc) fwc.textContent = (prof.followingIds || []).length;
+    });
 
     // Follow button
     const followEl = el.querySelector('#up-follow-action');
@@ -474,24 +559,36 @@ window.UserProfilePage = {
       return el;
     }
 
-    // Public account — load boards
+    // Public account — tabs for Boards and Followers
+    let upTab = 'boards';
     content.innerHTML = `
-      <div class="profile-boards-header">
-        <span class="section-label">Public Boards</span>
+      <div class="profile-tabs" style="margin-bottom:0">
+        <button class="profile-tab active" data-uptab="boards">Boards</button>
+        <button class="profile-tab" data-uptab="followers">Followers</button>
+        <button class="profile-tab" data-uptab="following">Following</button>
       </div>
-      <div class="boards-grid" id="up-boards">
-        <div class="skeleton" style="aspect-ratio:4/3;border-radius:12px"></div>
-        <div class="skeleton" style="aspect-ratio:4/3;border-radius:12px"></div>
-      </div>`;
+      <div id="up-tab-body" style="padding:16px 0;flex:1;overflow-y:auto;min-height:0"></div>`;
 
-    window.DB.getUserPublicBoards(user.uid).then(boards => {
-      const grid = content.querySelector('#up-boards');
+    const upBody = content.querySelector('#up-tab-body');
+    const switchUpTab = tab => {
+      upTab = tab;
+      content.querySelectorAll('[data-uptab]').forEach(b =>
+        b.classList.toggle('active', b.dataset.uptab === tab));
+      upBody.innerHTML = '';
+      if (tab === 'boards') renderUpBoards();
+      else renderUpUserList(tab);
+    };
+    content.querySelectorAll('[data-uptab]').forEach(b => {
+      b.onclick = () => switchUpTab(b.dataset.uptab);
+    });
+
+    const renderUpBoards = () => {
+      upBody.innerHTML = '<div class="boards-grid" id="up-boards"><div class="skeleton" style="aspect-ratio:4/3;border-radius:12px"></div><div class="skeleton" style="aspect-ratio:4/3;border-radius:12px"></div></div>';
+      window.DB.getUserPublicBoards(user.uid).then(boards => {
+      const grid = upBody.querySelector('#up-boards');
       if (!grid) return;
-
-      // Update board count in hero
       const countEl = el.querySelector('#up-board-count');
       if (countEl) countEl.textContent = boards.length;
-
       if (!boards.length) {
         grid.innerHTML = '<p style="font-size:13px;color:var(--ink-40);grid-column:1/-1">No public boards yet.</p>';
         return;
@@ -509,38 +606,34 @@ window.UserProfilePage = {
             <p class="board-card-dest">${(board.destinations||[]).slice(0,3).join(' · ') || 'No destinations'}</p>
             ${board.startDate ? `<p style="font-size:10px;color:var(--ink-40);margin-top:3px">${board.startDate}${board.endDate ? ' → ' + board.endDate : ''}</p>` : ''}
           </div>`;
-        // Navigate to board in view-only mode
-        card.onclick = () => window.App.navigate('board-detail', {
-          boardId:  board.id,
-          viewOnly: true,
-        });
+        card.onclick = () => window.App.navigate('board-detail', { boardId: board.id, viewOnly: true });
         grid.appendChild(card);
       });
     });
+    }; // end renderUpBoards
 
+    const renderUpUserList = async (mode) => {
+      upBody.innerHTML = '<p style="font-size:13px;color:var(--ink-40)">Loading…</p>';
+      const users = mode === 'followers'
+        ? await window.DB.getFollowers(user.uid)
+        : await window.DB.getFollowing(user.uid);
+      upBody.innerHTML = '';
+      if (!users.length) {
+        upBody.innerHTML = `<p style="font-size:13px;color:var(--ink-40)">No ${mode} yet.</p>`;
+        return;
+      }
+      await Promise.all(users.map(async u => {
+        const status = await window.DB.getFollowStatus(window.currentUser.uid, u.uid);
+        upBody.appendChild(window.ProfilePage.userRow(u, status));
+      }));
+    };
+
+    switchUpTab('boards');
     return el;
   },
 
   _renderFollowBtn(container, user, status) {
-    container.innerHTML = '';
-    if (status === 'friends') {
-      container.innerHTML = '<span class="friends-tag">Friends ✓</span>';
-    } else if (status === 'following') {
-      const btn = document.createElement('button');
-      btn.className = 'btn btn-sand btn-sm';
-      btn.textContent = 'Following';
-      btn.disabled = true;
-      container.appendChild(btn);
-    } else {
-      const btn = document.createElement('button');
-      btn.className = 'btn btn-clay btn-sm';
-      btn.textContent = 'Follow';
-      btn.onclick = async () => {
-        btn.disabled = true; btn.textContent = '…';
-        const result = await window.DB.followUser(window.currentUser.uid, user.uid);
-        this._renderFollowBtn(container, user, result?.mutual ? 'friends' : 'following');
-      };
-      container.appendChild(btn);
-    }
+    // Delegate to ProfilePage._renderRowAction which handles all states
+    window.ProfilePage._renderRowAction(container, user, status);
   },
 };
