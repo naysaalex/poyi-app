@@ -48,11 +48,31 @@ window.DB = {
   },
 
   async searchUsers(term) {
-    const snap = await this.db.collection('users')
-      .where('handle', '>=', term)
-      .where('handle', '<=', term + '\uf8ff')
-      .limit(20).get();
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Firestore doesn't support OR queries or full-text search.
+    // Strategy: run a handle prefix query AND a displayName prefix query,
+    // merge results client-side, deduplicate by uid.
+    const t = term.toLowerCase().trim();
+
+    const [handleSnap, nameSnap] = await Promise.all([
+      this.db.collection('users')
+        .where('handle', '>=', t)
+        .where('handle', '<=', t + '')
+        .limit(20).get(),
+      this.db.collection('users')
+        .where('displayName', '>=', t)
+        .where('displayName', '<=', t + '')
+        .limit(20).get(),
+    ]);
+
+    const seen = new Set();
+    const results = [];
+    [...handleSnap.docs, ...nameSnap.docs].forEach(d => {
+      if (!seen.has(d.id)) {
+        seen.add(d.id);
+        results.push({ id: d.id, ...d.data() });
+      }
+    });
+    return results;
   },
 
   subscribeToUser(uid, cb) {
