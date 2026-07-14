@@ -391,10 +391,15 @@ window.ProfilePage = {
         return;
       }
 
-      await Promise.all(filtered.map(async u => {
-        const status = await window.DB.getFollowStatus(window.currentUser.uid, u.uid);
-        results.appendChild(this.userRow(u, status));
-      }));
+      try {
+        await Promise.all(filtered.map(async u => {
+          const status = await window.DB.getFollowStatus(window.currentUser.uid, u.uid);
+          results.appendChild(this.userRow(u, status));
+        }));
+      } catch (err) {
+        console.error('Search render error:', err);
+        results.innerHTML = '<p style="font-size:13px;color:var(--rose)">Error loading results. Please try again.</p>';
+      }
     };
 
     // Search on button click or Enter
