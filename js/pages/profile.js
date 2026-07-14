@@ -420,6 +420,8 @@ window.ProfilePage = {
   // ── User row ─────────────────────────────────────────────────
   // status: 'none' | 'requested' | 'following' | 'friends'
   userRow(user, status) {
+    // Normalise uid — searchUsers returns {id, uid?, ...} so ensure uid is always set
+    if (!user.uid && user.id) user.uid = user.id;
     const row = document.createElement('div');
     row.className = 'friend-row animate-fade-in';
 
@@ -454,6 +456,7 @@ window.ProfilePage = {
 
   _renderRowAction(container, user, status) {
     container.innerHTML = '';
+    if (!user.uid && user.id) user.uid = user.id;
     const uid = window.currentUser.uid;
 
     if (status === 'friends' || status === 'following') {
@@ -538,6 +541,7 @@ window.ProfilePage = {
 
   // ── Navigate to another user's full profile page ────────────
   openUserProfile(user) {
+    if (!user.uid && user.id) user.uid = user.id;
     window.App.navigate('user-profile', { user });
   },
 };
@@ -675,6 +679,10 @@ window.UserProfilePage = {
 
   // ── Followers / Following modal (opened by tapping stat numbers) ──
   _openFollowModal(user, mode) {
+    const uid   = user.uid || user.id;
+    if (!uid) { console.error('_openFollowModal: no uid on user', user); return; }
+    // Patch uid onto user object so all downstream calls work
+    user = { ...user, uid };
     const title = mode === 'followers' ? 'Followers' : 'Following';
 
     const overlay = document.createElement('div');
