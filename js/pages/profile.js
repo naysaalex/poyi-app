@@ -425,11 +425,12 @@ window.ProfilePage = {
     const row = document.createElement('div');
     row.className = 'friend-row animate-fade-in';
 
-    const privacyBadge = user.isPublic
-      ? '<span style="font-size:10px;padding:2px 7px;border-radius:999px;background:var(--leaf-light);color:var(--leaf);font-weight:500">Public</span>'
-      : '<span style="font-size:10px;padding:2px 7px;border-radius:999px;background:var(--ink-10);color:var(--ink-60);font-weight:500">Private</span>';
-    const mutualBadge = status === 'friends'
-      ? '<span style="font-size:10px;padding:2px 7px;border-radius:999px;background:rgba(74,103,65,0.12);color:var(--leaf);font-weight:500">Friends</span>'
+    const privacyBadge = user.isPublic === false
+      ? '<span style="font-size:10px;padding:2px 7px;border-radius:999px;background:var(--ink-10);color:var(--ink-60);font-weight:500">Private</span>'
+      : '<span style="font-size:10px;padding:2px 7px;border-radius:999px;background:var(--leaf-light);color:var(--leaf);font-weight:500">Public</span>';
+    const relationBadge =
+      status === 'friends'   ? '<span style="font-size:10px;padding:2px 7px;border-radius:999px;background:rgba(74,103,65,0.12);color:var(--leaf);font-weight:500">Friends ✓</span>'
+      : status === 'following' ? '<span style="font-size:10px;padding:2px 7px;border-radius:999px;background:rgba(61,107,138,0.1);color:var(--sky);font-weight:500">Following</span>'
       : '';
 
     row.innerHTML = `
@@ -441,7 +442,7 @@ window.ProfilePage = {
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:2px">
           <span class="friend-handle">@${user.handle}</span>
           ${privacyBadge}
-          ${mutualBadge}
+          ${relationBadge}
         </div>
       </div>
       <div class="friend-action" style="flex-shrink:0"></div>`;
@@ -460,34 +461,33 @@ window.ProfilePage = {
     const uid = window.currentUser.uid;
 
     if (status === 'friends' || status === 'following') {
-      // Unfollow button
-      // Public users: unfollow immediately (no confirmation)
-      // Private users: require a confirmation tap
+      const isPrivate = user.isPublic === false; // explicit false = private; undefined/true = public
+
       const btn = document.createElement('button');
       btn.className   = 'btn btn-sand btn-sm';
-      btn.textContent = status === 'friends' ? 'Friends ✓' : 'Following';
+      btn.textContent = 'Unfollow';
+
       let confirmState = false;
 
       btn.onclick = async e => {
         e.stopPropagation();
 
-        if (!user.isPublic && !confirmState) {
-          // Private user — ask to confirm
+        if (isPrivate && !confirmState) {
+          // Private user — require a second tap to confirm
           confirmState = true;
           btn.textContent = 'Unfollow?';
           btn.classList.add('btn-danger-outline');
           setTimeout(() => {
             if (confirmState) {
               confirmState = false;
-              btn.textContent = status === 'friends' ? 'Friends ✓' : 'Following';
+              btn.textContent = 'Unfollow';
               btn.classList.remove('btn-danger-outline');
             }
           }, 3000);
           return;
         }
 
-        // Public user: unfollow immediately
-        // Private user: already confirmed above
+        // Execute unfollow (public: immediately, private: confirmed above)
         btn.disabled = true; btn.textContent = '…';
         try {
           await window.DB.unfollowUser(uid, user.uid);
@@ -495,7 +495,7 @@ window.ProfilePage = {
         } catch (err) {
           console.error('Unfollow failed:', err);
           btn.disabled = false;
-          btn.textContent = status === 'friends' ? 'Friends ✓' : 'Following';
+          btn.textContent = 'Unfollow';
         }
       };
       container.appendChild(btn);
