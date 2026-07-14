@@ -57,6 +57,9 @@ window.ProfilePage = {
         <button class="profile-tab ${this.activeTab==='boards'   ?'active':''}" data-tab="boards">Boards</button>
         <button class="profile-tab ${this.activeTab==='followers'?'active':''}" data-tab="followers">Followers</button>
         <button class="profile-tab ${this.activeTab==='following'?'active':''}" data-tab="following">Following</button>
+        <button class="profile-tab ${this.activeTab==='find'     ?'active':''}" data-tab="find">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;display:inline;vertical-align:-2px;margin-right:3px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>Find
+        </button>
       </div>
       <div class="profile-content" id="profile-content"></div>`;
 
@@ -258,6 +261,7 @@ window.ProfilePage = {
     if (tab === 'boards')    this.renderBoards(container);
     if (tab === 'followers') this.renderUserList(container, 'followers', window.currentUser.uid);
     if (tab === 'following') this.renderUserList(container, 'following', window.currentUser.uid);
+    if (tab === 'find')      this.renderFindPeople(container);
   },
 
   renderBoards(container) {
@@ -310,36 +314,8 @@ window.ProfilePage = {
       : 'Not following anyone yet.';
 
     container.innerHTML = `
-      <div style="display:flex;gap:8px;margin-bottom:16px">
-        <div class="search-bar" style="flex:1">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-          <input id="user-search" placeholder="Search by handle..." />
-        </div>
-        <button class="btn btn-clay btn-sm" id="user-search-btn">Search</button>
-      </div>
-      <div id="search-results"></div>
       <p class="section-label" style="margin-bottom:8px">${mode === 'followers' ? 'Followers' : 'Following'}</p>
       <div id="user-list"><p style="font-size:13px;color:var(--ink-40)">Loading…</p></div>`;
-
-    // Search
-    const doSearch = async () => {
-      const q = container.querySelector('#user-search').value.trim().toLowerCase();
-      if (!q) return;
-      const resultsEl = container.querySelector('#search-results');
-      resultsEl.innerHTML = '<p class="section-label" style="margin-bottom:8px">Results</p>';
-      const results = await window.DB.searchUsers(q);
-      const filtered = results.filter(u => u.uid !== window.currentUser.uid);
-      if (!filtered.length) {
-        resultsEl.innerHTML += '<p style="font-size:13px;color:var(--ink-40)">No users found.</p>';
-        return;
-      }
-      await Promise.all(filtered.map(async u => {
-        const status = await window.DB.getFollowStatus(window.currentUser.uid, u.uid);
-        resultsEl.appendChild(this.userRow(u, status));
-      }));
-    };
-    container.querySelector('#user-search-btn').onclick = doSearch;
-    container.querySelector('#user-search').onkeydown = e => { if (e.key === 'Enter') doSearch(); };
 
     // Load list
     const load = mode === 'followers'
@@ -359,6 +335,74 @@ window.ProfilePage = {
         listEl.appendChild(this.userRow(u, status));
       }));
     });
+  },
+
+  // ── Find People tab ──────────────────────────────────────────
+  renderFindPeople(container) {
+    container.innerHTML = `
+      <div style="padding-bottom:12px;border-bottom:0.5px solid var(--ink-10);margin-bottom:16px">
+        <div style="display:flex;gap:8px">
+          <div class="search-bar" style="flex:1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+            <input id="find-input" placeholder="Search by @handle or name…" autocomplete="off" autocapitalize="none" />
+          </div>
+          <button class="btn btn-clay btn-sm" id="find-btn">Search</button>
+        </div>
+        <p style="font-size:11px;color:var(--ink-40);margin-top:8px">
+          Search for users by their handle — e.g. <em>sanah</em> or <em>sanah_alex</em>
+        </p>
+      </div>
+      <div id="find-results"></div>`;
+
+    const input   = container.querySelector('#find-input');
+    const btn     = container.querySelector('#find-btn');
+    const results = container.querySelector('#find-results');
+
+    let debounceTimer = null;
+
+    const doSearch = async () => {
+      const q = input.value.trim().toLowerCase().replace('@', '');
+      results.innerHTML = '';
+      if (!q) return;
+
+      results.innerHTML = '<p style="font-size:13px;color:var(--ink-40)">Searching…</p>';
+      const found = await window.DB.searchUsers(q);
+      const filtered = found.filter(u => u.uid !== window.currentUser.uid);
+
+      results.innerHTML = '';
+      if (!filtered.length) {
+        results.innerHTML = `
+          <div class="empty-state" style="padding:32px 0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="width:40px;height:40px;color:var(--ink-20)">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+            <p style="font-size:14px">No users found</p>
+            <span>Try searching a different handle</span>
+          </div>`;
+        return;
+      }
+
+      await Promise.all(filtered.map(async u => {
+        const status = await window.DB.getFollowStatus(window.currentUser.uid, u.uid);
+        results.appendChild(this.userRow(u, status));
+      }));
+    };
+
+    // Search on button click or Enter
+    btn.onclick = doSearch;
+    input.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } };
+
+    // Live search as user types (debounced 400ms)
+    input.oninput = () => {
+      clearTimeout(debounceTimer);
+      if (!input.value.trim()) { results.innerHTML = ''; return; }
+      debounceTimer = setTimeout(doSearch, 400);
+    };
+
+    // Focus the input immediately
+    setTimeout(() => input.focus(), 50);
   },
 
   // ── User row ─────────────────────────────────────────────────
@@ -402,13 +446,18 @@ window.ProfilePage = {
 
     if (status === 'friends' || status === 'following') {
       // Unfollow button
+      // Public users: unfollow immediately (no confirmation)
+      // Private users: require a confirmation tap
       const btn = document.createElement('button');
       btn.className   = 'btn btn-sand btn-sm';
       btn.textContent = status === 'friends' ? 'Friends ✓' : 'Following';
       let confirmState = false;
+
       btn.onclick = async e => {
         e.stopPropagation();
-        if (!confirmState) {
+
+        if (!user.isPublic && !confirmState) {
+          // Private user — ask to confirm
           confirmState = true;
           btn.textContent = 'Unfollow?';
           btn.classList.add('btn-danger-outline');
@@ -421,6 +470,9 @@ window.ProfilePage = {
           }, 3000);
           return;
         }
+
+        // Public user: unfollow immediately
+        // Private user: already confirmed above
         btn.disabled = true; btn.textContent = '…';
         await window.DB.unfollowUser(uid, user.uid);
         this._renderRowAction(container, user, 'none');
