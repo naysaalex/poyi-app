@@ -240,3 +240,10 @@ body:has(#logout-screen:not([style*='display: none'])) { overflow: auto; }
 .gap-12 { gap: 12px; }
 .flex-1 { flex: 1; }
 .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Follow request danger-outline button ───────────────────── */
+.btn-danger-outline {
+  border-color: var(--rose) !important;
+  color:        var(--rose) !important;
+  background:   rgba(184,92,110,0.06) !important;
+}
