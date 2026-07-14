@@ -55,8 +55,6 @@ window.ProfilePage = {
 
       <div class="profile-tabs">
         <button class="profile-tab ${this.activeTab==='boards'   ?'active':''}" data-tab="boards">Boards</button>
-        <button class="profile-tab ${this.activeTab==='followers'?'active':''}" data-tab="followers">Followers</button>
-        <button class="profile-tab ${this.activeTab==='following'?'active':''}" data-tab="following">Following</button>
         <button class="profile-tab ${this.activeTab==='find'     ?'active':''}" data-tab="find">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;display:inline;vertical-align:-2px;margin-right:3px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>Find
         </button>
@@ -362,9 +360,6 @@ window.ProfilePage = {
           </div>
           <button class="btn btn-clay btn-sm" id="find-btn">Search</button>
         </div>
-        <p style="font-size:11px;color:var(--ink-40);margin-top:8px">
-          Search for users by their handle — e.g. <em>sanah</em> or <em>sanah_alex</em>
-        </p>
       </div>
       <div id="find-results"></div>`;
 
