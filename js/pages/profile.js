@@ -489,9 +489,14 @@ window.ProfilePage = {
         // Public user: unfollow immediately
         // Private user: already confirmed above
         btn.disabled = true; btn.textContent = '…';
-        await window.DB.unfollowUser(uid, user.uid);
-        // Re-render as Follow button — use window reference to guarantee context
-        window.ProfilePage._renderRowAction(container, user, 'none');
+        try {
+          await window.DB.unfollowUser(uid, user.uid);
+          window.ProfilePage._renderRowAction(container, user, 'none');
+        } catch (err) {
+          console.error('Unfollow failed:', err);
+          btn.disabled = false;
+          btn.textContent = status === 'friends' ? 'Friends ✓' : 'Following';
+        }
       };
       container.appendChild(btn);
 
