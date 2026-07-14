@@ -35,10 +35,10 @@ window.ProfilePage = {
           <p class="profile-handle">@${user.handle || ''}</p>
           ${user.bio ? `<p class="profile-bio">${user.bio}</p>` : ''}
           <div class="profile-stats">
-            <div style="cursor:pointer" onclick="window.ProfilePage.activeTab='followers';document.querySelector('[data-tab=followers]').click()">
+            <div style="cursor:pointer" id="own-follower-stat">
               <span class="stat-num" id="follower-count">0</span><span class="stat-label">followers</span>
             </div>
-            <div style="cursor:pointer" onclick="window.ProfilePage.activeTab='following';document.querySelector('[data-tab=following]').click()">
+            <div style="cursor:pointer" id="own-following-stat">
               <span class="stat-num" id="following-count">0</span><span class="stat-label">following</span>
             </div>
             <div><span class="stat-num" id="board-count">0</span><span class="stat-label">boards</span></div>
@@ -81,6 +81,18 @@ window.ProfilePage = {
         this.renderTab(btn.dataset.tab, el.querySelector('#profile-content'));
       };
     });
+
+    // Follower/following stats on own profile → switch to that tab
+    el.querySelector('#own-follower-stat').onclick = () => {
+      this.activeTab = 'followers';
+      el.querySelectorAll('.profile-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'followers'));
+      this.renderTab('followers', el.querySelector('#profile-content'));
+    };
+    el.querySelector('#own-following-stat').onclick = () => {
+      this.activeTab = 'following';
+      el.querySelectorAll('.profile-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'following'));
+      this.renderTab('following', el.querySelector('#profile-content'));
+    };
 
     const boardUnsub = window.DB.subscribeToUserBoards(window.currentUser.uid, boards => {
       const c = document.getElementById('board-count');
@@ -565,8 +577,12 @@ window.UserProfilePage = {
           <p class="profile-handle">@${user.handle}</p>
           ${user.bio ? `<p class="profile-bio">${user.bio}</p>` : ''}
           <div class="profile-stats">
-            <div><span class="stat-num" id="up-follower-count">—</span><span class="stat-label">followers</span></div>
-            <div><span class="stat-num" id="up-following-count">—</span><span class="stat-label">following</span></div>
+            <div id="up-follower-stat" style="cursor:pointer">
+              <span class="stat-num" id="up-follower-count">—</span><span class="stat-label">followers</span>
+            </div>
+            <div id="up-following-stat" style="cursor:pointer">
+              <span class="stat-num" id="up-following-count">—</span><span class="stat-label">following</span>
+            </div>
             <div><span class="stat-num" id="up-board-count">—</span><span class="stat-label">boards</span></div>
           </div>
           ${UI.privacyBadge(user.isPublic ? 'public' : 'private')}
@@ -581,7 +597,7 @@ window.UserProfilePage = {
     // Back button
     el.querySelector('#up-back').onclick = () => window.App.navigate('profile');
 
-    // Load live profile for counts
+    // Load live profile for counts — numbers are clickable to open modal
     window.DB.subscribeToUser(user.uid, prof => {
       if (!prof) return;
       const fc  = el.querySelector('#up-follower-count');
@@ -589,6 +605,12 @@ window.UserProfilePage = {
       if (fc)  fc.textContent  = (prof.followerIds  || []).length;
       if (fwc) fwc.textContent = (prof.followingIds || []).length;
     });
+
+    // Make follower/following counts open a slide-up modal
+    el.querySelector('#up-follower-stat').onclick = () =>
+      this._openFollowModal(user, 'followers');
+    el.querySelector('#up-following-stat').onclick = () =>
+      this._openFollowModal(user, 'following');
 
     // Follow button
     const followEl = el.querySelector('#up-follow-action');
@@ -611,38 +633,23 @@ window.UserProfilePage = {
       return el;
     }
 
-    // Public account — tabs for Boards and Followers
-    let upTab = 'boards';
+    // Public account — boards only (followers/following via modal from stat numbers)
     content.innerHTML = `
-      <div class="profile-tabs" style="margin-bottom:0">
-        <button class="profile-tab active" data-uptab="boards">Boards</button>
-        <button class="profile-tab" data-uptab="followers">Followers</button>
-        <button class="profile-tab" data-uptab="following">Following</button>
+      <div class="profile-boards-header" style="padding:16px 20px 8px">
+        <span class="section-label">Public Boards</span>
       </div>
-      <div id="up-tab-body" style="padding:16px 0;flex:1;overflow-y:auto;min-height:0"></div>`;
+      <div class="boards-grid" style="padding:0 20px 20px" id="up-boards">
+        <div class="skeleton" style="aspect-ratio:4/3;border-radius:12px"></div>
+        <div class="skeleton" style="aspect-ratio:4/3;border-radius:12px"></div>
+      </div>`;
 
-    const upBody = content.querySelector('#up-tab-body');
-    const switchUpTab = tab => {
-      upTab = tab;
-      content.querySelectorAll('[data-uptab]').forEach(b =>
-        b.classList.toggle('active', b.dataset.uptab === tab));
-      upBody.innerHTML = '';
-      if (tab === 'boards') renderUpBoards();
-      else renderUpUserList(tab);
-    };
-    content.querySelectorAll('[data-uptab]').forEach(b => {
-      b.onclick = () => switchUpTab(b.dataset.uptab);
-    });
-
-    const renderUpBoards = () => {
-      upBody.innerHTML = '<div class="boards-grid" id="up-boards"><div class="skeleton" style="aspect-ratio:4/3;border-radius:12px"></div><div class="skeleton" style="aspect-ratio:4/3;border-radius:12px"></div></div>';
-      window.DB.getUserPublicBoards(user.uid).then(boards => {
-      const grid = upBody.querySelector('#up-boards');
+    window.DB.getUserPublicBoards(user.uid).then(boards => {
+      const grid = content.querySelector('#up-boards');
       if (!grid) return;
       const countEl = el.querySelector('#up-board-count');
       if (countEl) countEl.textContent = boards.length;
       if (!boards.length) {
-        grid.innerHTML = '<p style="font-size:13px;color:var(--ink-40);grid-column:1/-1">No public boards yet.</p>';
+        grid.innerHTML = '<p style="font-size:13px;color:var(--ink-40);grid-column:1/-1;padding:8px">No public boards yet.</p>';
         return;
       }
       grid.innerHTML = '';
@@ -662,30 +669,58 @@ window.UserProfilePage = {
         grid.appendChild(card);
       });
     });
-    }; // end renderUpBoards
 
-    const renderUpUserList = async (mode) => {
-      upBody.innerHTML = '<p style="font-size:13px;color:var(--ink-40)">Loading…</p>';
-      const users = mode === 'followers'
-        ? await window.DB.getFollowers(user.uid)
-        : await window.DB.getFollowing(user.uid);
-      upBody.innerHTML = '';
-      if (!users.length) {
-        upBody.innerHTML = `<p style="font-size:13px;color:var(--ink-40)">No ${mode} yet.</p>`;
-        return;
-      }
-      await Promise.all(users.map(async u => {
-        const status = await window.DB.getFollowStatus(window.currentUser.uid, u.uid);
-        upBody.appendChild(window.ProfilePage.userRow(u, status));
-      }));
-    };
-
-    switchUpTab('boards');
     return el;
   },
 
+  // ── Followers / Following modal (opened by tapping stat numbers) ──
+  _openFollowModal(user, mode) {
+    const title = mode === 'followers' ? 'Followers' : 'Following';
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(28,24,20,0.55);backdrop-filter:blur(4px);z-index:600;display:flex;align-items:flex-end;justify-content:center';
+
+    const sheet = document.createElement('div');
+    sheet.style.cssText = 'background:var(--cream);border-radius:24px 24px 0 0;width:100%;max-width:540px;max-height:80vh;display:flex;flex-direction:column;animation:slideUp 0.3s var(--ease) both';
+
+    sheet.innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;padding:18px 20px 14px;border-bottom:0.5px solid var(--ink-10);flex-shrink:0">
+        <button id="fm-back" style="width:34px;height:34px;border-radius:50%;border:0.5px solid var(--ink-20);background:var(--white);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink-60);flex-shrink:0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <h2 style="font-family:var(--font-display);font-style:italic;font-weight:300;font-size:22px;color:var(--ink);flex:1">${title}</h2>
+      </div>
+      <div id="fm-list" style="overflow-y:auto;flex:1;padding:8px 16px 24px;-webkit-overflow-scrolling:touch">
+        <p style="font-size:13px;color:var(--ink-40);padding:16px 4px">Loading…</p>
+      </div>`;
+
+    const close = () => overlay.remove();
+    sheet.querySelector('#fm-back').onclick = close;
+    overlay.onclick = e => { if (e.target === overlay) close(); };
+
+    overlay.appendChild(sheet);
+    document.body.appendChild(overlay);
+
+    // Load users
+    const load = mode === 'followers'
+      ? window.DB.getFollowers(user.uid)
+      : window.DB.getFollowing(user.uid);
+
+    load.then(async users => {
+      const listEl = sheet.querySelector('#fm-list');
+      if (!users.length) {
+        listEl.innerHTML = `<p style="font-size:13px;color:var(--ink-40);padding:16px 4px">No ${mode} yet.</p>`;
+        return;
+      }
+      listEl.innerHTML = '';
+      await Promise.all(users.map(async u => {
+        const status = await window.DB.getFollowStatus(window.currentUser.uid, u.uid);
+        listEl.appendChild(window.ProfilePage.userRow(u, status));
+      }));
+    });
+  },
+
   _renderFollowBtn(container, user, status) {
-    // Delegate to ProfilePage._renderRowAction which handles all states
     window.ProfilePage._renderRowAction(container, user, status);
   },
 };
