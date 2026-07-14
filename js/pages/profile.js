@@ -490,7 +490,8 @@ window.ProfilePage = {
         // Private user: already confirmed above
         btn.disabled = true; btn.textContent = '…';
         await window.DB.unfollowUser(uid, user.uid);
-        this._renderRowAction(container, user, 'none');
+        // Re-render as Follow button — use window reference to guarantee context
+        window.ProfilePage._renderRowAction(container, user, 'none');
       };
       container.appendChild(btn);
 
@@ -525,12 +526,12 @@ window.ProfilePage = {
       // Not following — show Follow button
       const btn = document.createElement('button');
       btn.className   = 'btn btn-clay btn-sm';
-      btn.textContent = user.isPublic ? 'Follow' : 'Request';
+      btn.textContent = user.isPublic === false ? 'Request' : 'Follow';
       btn.onclick = async e => {
         e.stopPropagation();
         btn.disabled = true; btn.textContent = '…';
         const result = await window.DB.followUser(uid, user.uid);
-        this._renderRowAction(container, user, result?.status || 'following');
+        window.ProfilePage._renderRowAction(container, user, result?.status || 'following');
       };
       container.appendChild(btn);
     }
