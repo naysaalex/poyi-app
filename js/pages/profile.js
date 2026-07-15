@@ -596,6 +596,7 @@ window.UserProfilePage = {
             <div><span class="stat-num" id="up-board-count">—</span><span class="stat-label">boards</span></div>
           </div>
           ${UI.privacyBadge(user.isPublic ? 'public' : 'private')}
+          <span id="up-relation-badge" style="display:none;font-size:10px;padding:2px 7px;border-radius:999px;background:rgba(61,107,138,0.1);color:var(--sky);font-weight:500">Following</span>
         </div>
         <!-- Follow button -->
         <div id="up-follow-action" style="flex-shrink:0;align-self:flex-start;margin-top:4px"></div>
@@ -622,10 +623,30 @@ window.UserProfilePage = {
     el.querySelector('#up-following-stat').onclick = () =>
       this._openFollowModal(user, 'following');
 
-    // Follow button
-    const followEl = el.querySelector('#up-follow-action');
+    // Follow button + relation badge
+    const followEl   = el.querySelector('#up-follow-action');
+    const relBadgeEl = el.querySelector('#up-relation-badge');
+    const updateRelBadge = (status) => {
+      if (!relBadgeEl) return;
+      if (status === 'friends') {
+        relBadgeEl.textContent = 'Friends ✓';
+        relBadgeEl.style.display = '';
+        relBadgeEl.style.background = 'rgba(74,103,65,0.12)';
+        relBadgeEl.style.color = 'var(--leaf)';
+      } else if (status === 'following') {
+        relBadgeEl.textContent = 'Following';
+        relBadgeEl.style.display = '';
+        relBadgeEl.style.background = 'rgba(61,107,138,0.1)';
+        relBadgeEl.style.color = 'var(--sky)';
+      } else {
+        relBadgeEl.style.display = 'none';
+      }
+    };
     window.DB.getFollowStatus(window.currentUser.uid, user.uid).then(status => {
-      this._renderFollowBtn(followEl, user, status);
+      updateRelBadge(status);
+      // Wrap _renderFollowBtn so it also updates the badge on action
+      const wrappedEl = { _container: followEl, _user: user, _badge: updateRelBadge };
+      this._renderFollowBtnWithBadge(followEl, user, status, updateRelBadge);
     });
 
     // Content area
@@ -736,5 +757,72 @@ window.UserProfilePage = {
 
   _renderFollowBtn(container, user, status) {
     window.ProfilePage._renderRowAction(container, user, status);
+  },
+
+  // Like _renderRowAction but also updates the hero badge on every action
+  _renderFollowBtnWithBadge(container, user, status, updateBadge) {
+    container.innerHTML = '';
+    if (!user.uid && user.id) user.uid = user.id;
+    const uid       = window.currentUser.uid;
+    const isPrivate = user.isPublic === false;
+
+    if (status === 'friends' || status === 'following') {
+      const btn = document.createElement('button');
+      btn.className   = 'btn btn-sand btn-sm';
+      btn.textContent = 'Unfollow';
+      let confirmState = false;
+
+      btn.onclick = async e => {
+        e.stopPropagation();
+        if (isPrivate && !confirmState) {
+          confirmState = true;
+          btn.textContent = 'Unfollow?';
+          btn.classList.add('btn-danger-outline');
+          setTimeout(() => {
+            if (confirmState) {
+              confirmState = false;
+              btn.textContent = 'Unfollow';
+              btn.classList.remove('btn-danger-outline');
+            }
+          }, 3000);
+          return;
+        }
+        btn.disabled = true; btn.textContent = '…';
+        try {
+          await window.DB.unfollowUser(uid, user.uid);
+          updateBadge('none');
+          this._renderFollowBtnWithBadge(container, user, 'none', updateBadge);
+        } catch (err) {
+          console.error('Unfollow failed:', err);
+          btn.disabled = false; btn.textContent = 'Unfollow';
+        }
+      };
+      container.appendChild(btn);
+
+    } else if (status === 'requested') {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-sand btn-sm';
+      btn.textContent = 'Requested';
+      container.appendChild(btn);
+
+    } else {
+      const btn = document.createElement('button');
+      btn.className   = 'btn btn-clay btn-sm';
+      btn.textContent = isPrivate ? 'Request' : 'Follow';
+      btn.onclick = async e => {
+        e.stopPropagation();
+        btn.disabled = true; btn.textContent = '…';
+        try {
+          const result = await window.DB.followUser(uid, user.uid);
+          const newStatus = result?.status || 'following';
+          updateBadge(newStatus);
+          this._renderFollowBtnWithBadge(container, user, newStatus, updateBadge);
+        } catch (err) {
+          console.error('Follow failed:', err);
+          btn.disabled = false; btn.textContent = isPrivate ? 'Request' : 'Follow';
+        }
+      };
+      container.appendChild(btn);
+    }
   },
 };
