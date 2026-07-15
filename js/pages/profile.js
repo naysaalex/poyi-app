@@ -649,40 +649,56 @@ window.UserProfilePage = {
       this._renderFollowBtnWithBadge(followEl, user, status, updateRelBadge);
     });
 
-    // Content area
+    // Content area — show boards based on viewer's relationship to this user
     const content = el.querySelector('#up-content');
-    if (!user.isPublic) {
-      content.innerHTML = `
-        <div class="empty-state">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="width:48px;height:48px;color:var(--ink-20)">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-          <p>Private account</p>
-          <span>Follow ${user.displayName || user.handle} and they follow you back to see their boards.</span>
-        </div>`;
-      return el;
-    }
 
-    // Public account — boards only (followers/following via modal from stat numbers)
-    content.innerHTML = `
-      <div class="profile-boards-header" style="padding:16px 20px 8px">
-        <span class="section-label">Public Boards</span>
-      </div>
-      <div class="boards-grid" style="padding:0 20px 20px" id="up-boards">
-        <div class="skeleton" style="aspect-ratio:4/3;border-radius:12px"></div>
-        <div class="skeleton" style="aspect-ratio:4/3;border-radius:12px"></div>
-      </div>`;
+    window.DB.getFollowStatus(window.currentUser.uid, user.uid).then(async viewerStatus => {
+      // Determine what the viewer can see
+      // public users:  anyone sees public; followers see followers boards; friends see friends boards
+      // private users: only followers (accepted) and friends see boards; others see lock screen
+      const isSelf      = window.currentUser.uid === user.uid;
+      const isFollowing = viewerStatus === 'following' || viewerStatus === 'friends';
+      const isFriend    = viewerStatus === 'friends';
 
-    window.DB.getUserPublicBoards(user.uid).then(boards => {
-      const grid = content.querySelector('#up-boards');
-      if (!grid) return;
-      const countEl = el.querySelector('#up-board-count');
-      if (countEl) countEl.textContent = boards.length;
-      if (!boards.length) {
-        grid.innerHTML = '<p style="font-size:13px;color:var(--ink-40);grid-column:1/-1;padding:8px">No public boards yet.</p>';
+      const viewerCanSeeAnyBoards = user.isPublic || isFollowing || isSelf;
+
+      if (!viewerCanSeeAnyBoards) {
+        content.innerHTML = `
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="width:48px;height:48px;color:var(--ink-20)">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            <p>Private account</p>
+            <span>Follow ${user.displayName || user.handle} to see their boards.</span>
+          </div>`;
         return;
       }
+
+      // Determine viewer relationship key for getUserVisibleBoards
+      const relation = isSelf ? 'self' : isFriend ? 'friends' : isFollowing ? 'following' : 'none';
+
+      content.innerHTML = `
+        <div class="profile-boards-header" style="padding:16px 20px 8px">
+          <span class="section-label">Boards</span>
+        </div>
+        <div class="boards-grid" style="padding:0 20px 20px" id="up-boards">
+          <div class="skeleton" style="aspect-ratio:4/3;border-radius:12px"></div>
+          <div class="skeleton" style="aspect-ratio:4/3;border-radius:12px"></div>
+        </div>`;
+
+      const boards = await window.DB.getUserVisibleBoards(user.uid, relation);
+      const grid = content.querySelector('#up-boards');
+      if (!grid) return;
+
+      const countEl = el.querySelector('#up-board-count');
+      if (countEl) countEl.textContent = boards.length;
+
+      if (!boards.length) {
+        grid.innerHTML = '<p style="font-size:13px;color:var(--ink-40);grid-column:1/-1;padding:8px">No boards yet.</p>';
+        return;
+      }
+
       grid.innerHTML = '';
       boards.forEach(board => {
         const card = document.createElement('div');
@@ -696,64 +712,16 @@ window.UserProfilePage = {
             <p class="board-card-dest">${(board.destinations||[]).slice(0,3).join(' · ') || 'No destinations'}</p>
             ${board.startDate ? `<p style="font-size:10px;color:var(--ink-40);margin-top:3px">${board.startDate}${board.endDate ? ' → ' + board.endDate : ''}</p>` : ''}
           </div>`;
-        card.onclick = () => window.App.navigate('board-detail', { boardId: board.id, viewOnly: true });
+        card.onclick = () => window.App.navigate('board-detail', {
+          boardId:  board.id,
+          viewOnly: !isSelf,
+        });
         grid.appendChild(card);
       });
-    });
+    }); // end getFollowStatus.then
 
     return el;
-  },
-
-  // ── Followers / Following modal (opened by tapping stat numbers) ──
-  _openFollowModal(user, mode) {
-    const uid   = user.uid || user.id;
-    if (!uid) { console.error('_openFollowModal: no uid on user', user); return; }
-    // Patch uid onto user object so all downstream calls work
-    user = { ...user, uid };
-    const title = mode === 'followers' ? 'Followers' : 'Following';
-
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(28,24,20,0.55);backdrop-filter:blur(4px);z-index:600;display:flex;align-items:flex-end;justify-content:center';
-
-    const sheet = document.createElement('div');
-    sheet.style.cssText = 'background:var(--cream);border-radius:24px 24px 0 0;width:100%;max-width:540px;max-height:80vh;display:flex;flex-direction:column;animation:slideUp 0.3s var(--ease) both';
-
-    sheet.innerHTML = `
-      <div style="display:flex;align-items:center;gap:12px;padding:18px 20px 14px;border-bottom:0.5px solid var(--ink-10);flex-shrink:0">
-        <button id="fm-back" style="width:34px;height:34px;border-radius:50%;border:0.5px solid var(--ink-20);background:var(--white);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink-60);flex-shrink:0">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
-        <h2 style="font-family:var(--font-display);font-style:italic;font-weight:300;font-size:22px;color:var(--ink);flex:1">${title}</h2>
-      </div>
-      <div id="fm-list" style="overflow-y:auto;flex:1;padding:8px 16px 24px;-webkit-overflow-scrolling:touch">
-        <p style="font-size:13px;color:var(--ink-40);padding:16px 4px">Loading…</p>
-      </div>`;
-
-    const close = () => overlay.remove();
-    sheet.querySelector('#fm-back').onclick = close;
-    overlay.onclick = e => { if (e.target === overlay) close(); };
-
-    overlay.appendChild(sheet);
-    document.body.appendChild(overlay);
-
-    // Load users
-    const load = mode === 'followers'
-      ? window.DB.getFollowers(user.uid)
-      : window.DB.getFollowing(user.uid);
-
-    load.then(async users => {
-      const listEl = sheet.querySelector('#fm-list');
-      if (!users.length) {
-        listEl.innerHTML = `<p style="font-size:13px;color:var(--ink-40);padding:16px 4px">No ${mode} yet.</p>`;
-        return;
-      }
-      listEl.innerHTML = '';
-      await Promise.all(users.map(async u => {
-        const status = await window.DB.getFollowStatus(window.currentUser.uid, u.uid);
-        listEl.appendChild(window.ProfilePage.userRow(u, status));
-      }));
-    });
-  },
+  }, // end render
 
   _renderFollowBtn(container, user, status) {
     window.ProfilePage._renderRowAction(container, user, status);
