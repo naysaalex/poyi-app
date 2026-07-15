@@ -374,6 +374,35 @@ window.DB = {
     return snap.docs.map(d => ({ id: d.id, ...d.data() }));
   },
 
+  // Fetch boards visible to current viewer based on their relationship:
+  //   self      → all boards (public, followers, friends, private)
+  //   friends   → public + followers + friends boards
+  //   following → public + followers boards
+  //   none      → public boards only
+  async getUserVisibleBoards(uid, viewerRelation) {
+    const viewerUid = window.currentUser?.uid;
+
+    // Own profile — show everything
+    if (viewerUid === uid) {
+      const snap = await this.db.collection('boards').where('ownerId', '==', uid).get();
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    }
+
+    const privacyLevels = ['public'];
+    if (viewerRelation === 'following' || viewerRelation === 'friends') privacyLevels.push('followers');
+    if (viewerRelation === 'friends') privacyLevels.push('friends');
+
+    try {
+      const snap = await this.db.collection('boards').where('ownerId', '==', uid).get();
+      return snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(b => privacyLevels.includes(b.privacy));
+    } catch (e) {
+      console.warn('getUserVisibleBoards fallback:', e.code);
+      return this.getUserPublicBoards(uid);
+    }
+  },
+
   async inviteCollaborator(boardId, invitedUid, inviterUid) {
     await this.db.collection('notifications').add({
       userId: invitedUid, type: 'boardInvite', boardId, fromUid: inviterUid,

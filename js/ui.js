@@ -46,9 +46,15 @@ window.UI = {
 
   // ── Privacy badge ─────────────────────────────────────────
   privacyBadge(value) {
-    const map = { public: ['🌍','var(--leaf)','var(--leaf-light)'], friends: ['👥','var(--sky)','var(--sky-light)'], private: ['🔒','var(--ink-60)','var(--ink-10)'] };
+    const map = {
+      public:    ['🌍', 'var(--leaf)',   'var(--leaf-light)'],
+      followers: ['👣', 'var(--clay)',   'var(--clay-light)'],
+      friends:   ['👥', 'var(--sky)',    'var(--sky-light)'],
+      private:   ['🔒', 'var(--ink-60)', 'var(--ink-10)'],
+    };
     const [icon, color, bg] = map[value] || map.private;
-    return `<span class="privacy-badge" style="background:${bg};color:${color}">${icon} ${value}</span>`;
+    const label = { public:'Public', followers:'Followers', friends:'Friends', private:'Private' }[value] || value;
+    return `<span class="privacy-badge" style="background:${bg};color:${color}">${icon} ${label}</span>`;
   },
 
   // ── Board gradient backgrounds ────────────────────────────
@@ -102,9 +108,10 @@ window.UI = {
   // ── Privacy select ────────────────────────────────────────
   privacySelect(currentValue, onChange) {
     const opts = [
-      { value: 'public',  label: 'Public',      icon: '🌍' },
-      { value: 'friends', label: 'Friends only', icon: '👥' },
-      { value: 'private', label: 'Private',      icon: '🔒' },
+      { value: 'public',    label: 'Public',         icon: '🌍', desc: 'Anyone can see this board' },
+      { value: 'followers', label: 'Followers',       icon: '👣', desc: 'Your followers can see this' },
+      { value: 'friends',   label: 'Friends only',    icon: '👥', desc: 'Only mutual follows can see this' },
+      { value: 'private',   label: 'Only me',         icon: '🔒', desc: 'Only you can see this board' },
     ];
     const wrap = document.createElement('div');
     wrap.className = 'privacy-select-group';
@@ -112,8 +119,9 @@ window.UI = {
     const render = () => {
       wrap.innerHTML = opts.map(o => `
         <button type="button" class="privacy-opt ${selected === o.value ? 'selected' : ''}" data-val="${o.value}">
-          <span style="font-size:20px">${o.icon}</span>
+          <span style="font-size:18px">${o.icon}</span>
           <span>${o.label}</span>
+          ${o.desc ? `<span style="font-size:9px;color:var(--ink-40);font-weight:400;margin-top:2px">${o.desc}</span>` : ''}
         </button>`).join('');
       wrap.querySelectorAll('.privacy-opt').forEach(btn => {
         btn.onclick = () => { selected = btn.dataset.val; onChange(selected); render(); };
