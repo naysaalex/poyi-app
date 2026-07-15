@@ -292,6 +292,12 @@ window.DB = {
     await this.db.collection('notifications').doc(notifId).update({ read: true });
   },
 
+  async declineBoardInvite(notifId) {
+    await this.db.collection('notifications').doc(notifId).update({
+      read: true, status: 'declined',
+    });
+  },
+
   async markAllNotificationsRead(uid) {
     const snap = await this.db.collection('notifications')
       .where('userId', '==', uid).where('read', '==', false).get();
