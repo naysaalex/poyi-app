@@ -800,9 +800,37 @@ window.UserProfilePage = {
       container.appendChild(btn);
 
     } else if (status === 'requested') {
+      // Sent a follow request to a private user — allow cancellation
       const btn = document.createElement('button');
-      btn.className = 'btn btn-sand btn-sm';
+      btn.className   = 'btn btn-sand btn-sm';
       btn.textContent = 'Requested';
+      let confirmState = false;
+
+      btn.onclick = async e => {
+        e.stopPropagation();
+        if (!confirmState) {
+          confirmState = true;
+          btn.textContent = 'Cancel request?';
+          btn.classList.add('btn-danger-outline');
+          setTimeout(() => {
+            if (confirmState) {
+              confirmState = false;
+              btn.textContent = 'Requested';
+              btn.classList.remove('btn-danger-outline');
+            }
+          }, 3000);
+          return;
+        }
+        btn.disabled = true; btn.textContent = '…';
+        try {
+          await window.DB.cancelFollowRequest(uid, user.uid);
+          updateBadge('none');
+          this._renderFollowBtnWithBadge(container, user, 'none', updateBadge);
+        } catch (err) {
+          console.error('Cancel request failed:', err);
+          btn.disabled = false; btn.textContent = 'Requested';
+        }
+      };
       container.appendChild(btn);
 
     } else {
