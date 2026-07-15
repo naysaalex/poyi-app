@@ -188,44 +188,35 @@ window.NotificationsPage = {
 
     // ── Board invite ──────────────────────────────────────────
     else if (n.type === 'boardInvite') {
-      (async () => {
-        // Check if already a collaborator
-        let boardName = 'a board';
+      // boardName is stored in the notification — no board read needed
+      const boardName = n.boardName || 'a board';
+
+      const join    = document.createElement('button');
+      const decline = document.createElement('button');
+      join.className      = 'btn btn-clay btn-sm';
+      join.textContent    = 'Accept';
+      decline.className   = 'btn btn-sand btn-sm';
+      decline.textContent = 'Decline';
+
+      join.onclick = async () => {
+        join.disabled = true; join.textContent = '…';
         try {
-          const board = await window.DB.getBoard(n.boardId);
-          if (board) boardName = board.title;
-          if (board && (board.collaborators || []).includes(window.currentUser.uid)) {
-            actEl.innerHTML = '<span style="font-size:12px;color:var(--leaf)">Already a collaborator ✓</span>';
-            return;
-          }
-        } catch(e) {}
+          await window.DB.acceptBoardInvite(n.boardId, window.currentUser.uid, n.id);
+          actEl.innerHTML = `<span style="font-size:12px;color:var(--leaf)">Joined "${boardName}" ✓</span>`;
+        } catch(e) {
+          join.disabled = false; join.textContent = 'Accept';
+          console.error('Accept board invite failed:', e.code, e.message);
+          UI.toast('Could not accept invite — please try again', 'error');
+        }
+      };
+      decline.onclick = async () => {
+        decline.disabled = true; decline.textContent = '…';
+        await window.DB.markNotificationRead(n.id);
+        actEl.innerHTML = '<span style="font-size:12px;color:var(--ink-40)">Declined</span>';
+      };
 
-        const join    = document.createElement('button');
-        const decline = document.createElement('button');
-        join.className    = 'btn btn-clay btn-sm';
-        join.textContent  = 'Accept';
-        decline.className = 'btn btn-sand btn-sm';
-        decline.textContent = 'Decline';
-
-        join.onclick = async () => {
-          join.disabled = true; join.textContent = '…';
-          try {
-            await window.DB.acceptBoardInvite(n.boardId, window.currentUser.uid, n.id);
-            actEl.innerHTML = `<span style="font-size:12px;color:var(--leaf)">Joined "${boardName}" ✓</span>`;
-          } catch(e) {
-            join.disabled = false; join.textContent = 'Accept';
-            console.error('Accept board invite failed:', e);
-          }
-        };
-        decline.onclick = async () => {
-          decline.disabled = true;
-          await window.DB.markNotificationRead(n.id);
-          actEl.innerHTML = '<span style="font-size:12px;color:var(--ink-40)">Declined</span>';
-        };
-
-        actEl.appendChild(join);
-        actEl.appendChild(decline);
-      })();
+      actEl.appendChild(join);
+      actEl.appendChild(decline);
     }
   },
 
