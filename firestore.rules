@@ -6,12 +6,45 @@ service cloud.firestore {
     function isOwner(uid)    { return request.auth.uid == uid; }
     function isCollab(board) { return request.auth.uid in board.data.collaborators; }
 
+    // Get the owner's user profile for a board
+    function ownerOf(boardData) {
+      return get(/databases/$(database)/documents/users/$(boardData.ownerId)).data;
+    }
+
+    // Board visibility matrix:
+    //   private   → owner (collaborators) only
+    //   friends   → owner + mutual follows (friendIds) only
+    //   followers → owner + followers + friends
+    //   public    → all signed-in users
+    function canReadBoard(board) {
+      let p    = board.data.privacy;
+      let uid  = request.auth.uid;
+      let own  = ownerOf(board.data);
+      return isCollab(board)
+          || p == 'public'
+          || (p == 'followers' && (uid in own.followerIds || uid in own.friendIds))
+          || (p == 'friends'   &&  uid in own.friendIds);
+    }
+
+    // Same check but takes boardId (for subcollection reads)
+    function canReadBoardById(boardId) {
+      let b   = get(/databases/$(database)/documents/boards/$(boardId));
+      let p   = b.data.privacy;
+      let uid = request.auth.uid;
+      let own = get(/databases/$(database)/documents/users/$(b.data.ownerId)).data;
+      return request.auth.uid in b.data.collaborators
+          || p == 'public'
+          || (p == 'followers' && (uid in own.followerIds || uid in own.friendIds))
+          || (p == 'friends'   &&  uid in own.friendIds);
+    }
+
     match /users/{uid} {
       allow read: if true;
       allow create: if signedIn() && isOwner(uid);
       allow delete: if signedIn() && isOwner(uid);
       allow update: if signedIn() && (
         isOwner(uid) ||
+        // Any signed-in user may update only follow-related arrays on others
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['followerIds', 'followingIds', 'friendIds', 'friendCount'])
       );
@@ -33,8 +66,6 @@ service cloud.firestore {
     }
 
     match /notifications/{id} {
-      // Allow signed-in users to read — query is scoped by where('userId','==',uid)
-      // so users only ever receive their own notifications.
       allow read:   if signedIn();
       allow create: if signedIn();
       allow update: if signedIn() && resource.data.userId == request.auth.uid;
@@ -42,29 +73,21 @@ service cloud.firestore {
     }
 
     match /boards/{boardId} {
-      allow read: if signedIn() && (
-        resource.data.privacy == 'public' ||
-        isCollab(resource) ||
-        (resource.data.privacy == 'friends' &&
-          request.auth.uid in get(/databases/$(database)/documents/users/$(resource.data.ownerId)).data.friendIds)
-      );
+      allow read:   if signedIn() && canReadBoard(resource);
       allow create: if signedIn();
       allow update: if signedIn() && isCollab(resource);
       allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
 
       match /places/{placeId} {
-        allow read: if signedIn() && (
-          get(/databases/$(database)/documents/boards/$(boardId)).data.privacy == 'public' ||
-          isCollab(get(/databases/$(database)/documents/boards/$(boardId)))
-        );
-        allow write: if signedIn() && isCollab(get(/databases/$(database)/documents/boards/$(boardId)));
+        allow read:  if signedIn() && canReadBoardById(boardId);
+        allow write: if signedIn() && request.auth.uid in
+          get(/databases/$(database)/documents/boards/$(boardId)).data.collaborators;
       }
+
       match /visionImages/{imgId} {
-        allow read: if signedIn() && (
-          get(/databases/$(database)/documents/boards/$(boardId)).data.privacy == 'public' ||
-          isCollab(get(/databases/$(database)/documents/boards/$(boardId)))
-        );
-        allow create: if signedIn() && isCollab(get(/databases/$(database)/documents/boards/$(boardId)));
+        allow read:   if signedIn() && canReadBoardById(boardId);
+        allow create: if signedIn() && request.auth.uid in
+          get(/databases/$(database)/documents/boards/$(boardId)).data.collaborators;
         allow delete: if signedIn() && (
           resource.data.addedBy == request.auth.uid ||
           get(/databases/$(database)/documents/boards/$(boardId)).data.ownerId == request.auth.uid
