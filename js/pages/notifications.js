@@ -64,7 +64,7 @@ window.NotificationsPage = {
           followAccepted:      'accepted your follow request',
           friendAccepted:      'is now your friend — you follow each other! 🎉',
           followed:            'started following you',
-          boardInvite:         'invited you to collaborate on a board',
+          boardInvite:         `invited you to collaborate on${n.boardName ? ' "' + n.boardName + '"' : ' a board'}`,
           boardInviteAccepted: `accepted your invite to join "${n.boardName || 'your board'}"`,
         };
         const msg = typeMessages[n.type] || '';
@@ -188,9 +188,19 @@ window.NotificationsPage = {
 
     // ── Board invite ──────────────────────────────────────────
     else if (n.type === 'boardInvite') {
-      // boardName is stored in the notification — no board read needed
       const boardName = n.boardName || 'a board';
 
+      // If already handled, show the result — don't re-show buttons
+      if (n.status === 'accepted') {
+        actEl.innerHTML = `<span style="font-size:12px;color:var(--leaf)">Joined "${boardName}" ✓</span>`;
+        return;
+      }
+      if (n.status === 'declined' || (n.read && n.status !== undefined)) {
+        actEl.innerHTML = '<span style="font-size:12px;color:var(--ink-40)">Declined</span>';
+        return;
+      }
+
+      // Not yet handled — show Accept / Decline
       const join    = document.createElement('button');
       const decline = document.createElement('button');
       join.className      = 'btn btn-clay btn-sm';
@@ -211,7 +221,8 @@ window.NotificationsPage = {
       };
       decline.onclick = async () => {
         decline.disabled = true; decline.textContent = '…';
-        await window.DB.markNotificationRead(n.id);
+        // Store status:'declined' so it persists across refreshes
+        await window.DB.declineBoardInvite(n.id);
         actEl.innerHTML = '<span style="font-size:12px;color:var(--ink-40)">Declined</span>';
       };
 

@@ -1388,12 +1388,22 @@ window.BoardDetailPage = {
     const friendResult = el.querySelector('#bst-friend-results');
     if (searchInput && friendResult && isOwner) {
       let debounce = null;
+
+      // Load pending invites for this board upfront to show status
+      let pendingInvites = new Set();
+      window.firebaseDb.collection('notifications')
+        .where('type',    '==', 'boardInvite')
+        .where('boardId', '==', board.id)
+        .where('read',    '==', false)
+        .get().then(snap => {
+          snap.docs.forEach(d => pendingInvites.add(d.data().userId));
+        }).catch(() => {});
+
       searchInput.oninput = () => {
         clearTimeout(debounce);
         const q = searchInput.value.trim().toLowerCase();
         if (!q) { friendResult.innerHTML = ''; return; }
         debounce = setTimeout(async () => {
-          // Search only among friends (not all users)
           const friends = await window.DB.getFriends(window.currentUser.uid);
           const matches = friends.filter(f =>
             (f.handle || '').toLowerCase().includes(q) ||
@@ -1405,8 +1415,22 @@ window.BoardDetailPage = {
             return;
           }
           matches.forEach(friend => {
-            const friendUid = friend.uid || friend.id;
-            const alreadyCollab = (board.collaborators || []).includes(friendUid);
+            const friendUid   = friend.uid || friend.id;
+            const isCollab    = (board.collaborators || []).includes(friendUid);
+            const isPending   = pendingInvites.has(friendUid);
+            const isOwnerSelf = friendUid === board.ownerId;
+
+            let statusHtml = '';
+            if (isOwnerSelf) {
+              statusHtml = '<span style="font-size:11px;color:var(--ink-40)">Owner</span>';
+            } else if (isCollab) {
+              statusHtml = '<span style="font-size:11px;padding:3px 8px;border-radius:999px;background:var(--leaf-light);color:var(--leaf);font-weight:500">Collaborator ✓</span>';
+            } else if (isPending) {
+              statusHtml = '<span style="font-size:11px;padding:3px 8px;border-radius:999px;background:var(--sand-deep);color:var(--ink-60);font-weight:500">Invite pending…</span>';
+            } else {
+              statusHtml = '<button class="btn btn-clay btn-sm invite-btn">Invite</button>';
+            }
+
             const row = document.createElement('div');
             row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--ink-06)';
             row.innerHTML = `
@@ -1417,15 +1441,15 @@ window.BoardDetailPage = {
                 <div style="font-size:13px;font-weight:500;color:var(--ink)">${friend.displayName || friend.handle}</div>
                 <div style="font-size:11px;color:var(--ink-40)">@${friend.handle || ''}</div>
               </div>
-              <button class="btn btn-clay btn-sm" ${alreadyCollab ? 'disabled' : ''}>
-                ${alreadyCollab ? 'Added ✓' : 'Invite'}
-              </button>`;
-            const inviteBtn = row.querySelector('button');
-            if (!alreadyCollab) {
+              ${statusHtml}`;
+
+            const inviteBtn = row.querySelector('.invite-btn');
+            if (inviteBtn) {
               inviteBtn.onclick = async () => {
                 inviteBtn.disabled = true; inviteBtn.textContent = '…';
                 await window.DB.inviteCollaborator(board.id, friendUid, window.currentUser.uid);
-                inviteBtn.textContent = 'Invited ✓';
+                pendingInvites.add(friendUid);
+                inviteBtn.outerHTML = '<span style="font-size:11px;padding:3px 8px;border-radius:999px;background:var(--sand-deep);color:var(--ink-60);font-weight:500">Invite pending…</span>';
                 UI.toast(`Invite sent to ${friend.displayName || friend.handle}!`, 'success');
               };
             }
