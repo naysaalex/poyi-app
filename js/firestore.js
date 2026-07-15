@@ -182,11 +182,23 @@ window.DB = {
         friendCount: firebase.firestore.FieldValue.increment(1),
       });
     }
-    // Notify requester their request was accepted
-    await this.db.collection('notifications').add({
-      userId: fromUid, type: 'followAccepted', fromUid: toUid, read: false,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-    });
+    if (isMutual) {
+      // Both follow each other — send friendAccepted to both
+      await this.db.collection('notifications').add({
+        userId: fromUid, type: 'friendAccepted', fromUid: toUid, read: false,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      await this.db.collection('notifications').add({
+        userId: toUid, type: 'friendAccepted', fromUid, read: false,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    } else {
+      // One-way — just notify requester their request was accepted
+      await this.db.collection('notifications').add({
+        userId: fromUid, type: 'followAccepted', fromUid: toUid, read: false,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    }
     return { mutual: isMutual };
   },
 
