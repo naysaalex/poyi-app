@@ -380,27 +380,47 @@ window.DB = {
   //   following → public + followers boards
   //   none      → public boards only
   async getUserVisibleBoards(uid, viewerRelation) {
+    // Query only the privacy levels this viewer is allowed to see.
+    // We query each level separately to avoid Firestore rules blocking
+    // a combined query that includes boards the viewer can't access.
     const viewerUid = window.currentUser?.uid;
 
-    // Own profile — show everything
     if (viewerUid === uid) {
+      // Own profile — fetch all privacy levels
       const snap = await this.db.collection('boards').where('ownerId', '==', uid).get();
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
     }
 
-    const privacyLevels = ['public'];
-    if (viewerRelation === 'following' || viewerRelation === 'friends') privacyLevels.push('followers');
-    if (viewerRelation === 'friends') privacyLevels.push('friends');
-
-    try {
-      const snap = await this.db.collection('boards').where('ownerId', '==', uid).get();
-      return snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(b => privacyLevels.includes(b.privacy));
-    } catch (e) {
-      console.warn('getUserVisibleBoards fallback:', e.code);
-      return this.getUserPublicBoards(uid);
+    // Build the set of privacy levels this viewer can see
+    const levels = ['public'];
+    if (viewerRelation === 'following' || viewerRelation === 'friends') {
+      levels.push('followers');
     }
+    if (viewerRelation === 'friends') {
+      levels.push('friends');
+    }
+
+    // Run one query per visible privacy level and merge results
+    const snaps = await Promise.all(
+      levels.map(level =>
+        this.db.collection('boards')
+          .where('ownerId', '==', uid)
+          .where('privacy', '==', level)
+          .get()
+      )
+    );
+
+    const seen = new Set();
+    const results = [];
+    snaps.forEach(snap => {
+      snap.docs.forEach(d => {
+        if (!seen.has(d.id)) {
+          seen.add(d.id);
+          results.push({ id: d.id, ...d.data() });
+        }
+      });
+    });
+    return results;
   },
 
   async inviteCollaborator(boardId, invitedUid, inviterUid) {
