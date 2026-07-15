@@ -35,15 +35,27 @@ service cloud.firestore {
     }
 
     match /followRequests/{id} {
-      allow read:   if signedIn() && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow read:   if signedIn() && (
+        resource == null ||
+        resource.data.from == request.auth.uid ||
+        resource.data.to   == request.auth.uid
+      );
       allow create: if signedIn();
-      allow update: if signedIn() && (resource.data.to == request.auth.uid || resource.data.from == request.auth.uid);
+      allow update: if signedIn() && (
+        resource.data.to   == request.auth.uid ||
+        resource.data.from == request.auth.uid
+      );
     }
 
     match /notifications/{id} {
-      allow read:   if signedIn() && resource.data.userId == request.auth.uid;
+      // For collection queries (subscribeToNotifications), Firestore evaluates
+      // the rule per-document. resource.data is available for reads.
+      allow read:   if signedIn() && (
+        resource == null || resource.data.userId == request.auth.uid
+      );
       allow create: if signedIn();
       allow update: if signedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if signedIn() && resource.data.userId == request.auth.uid;
     }
 
     match /boards/{boardId} {
