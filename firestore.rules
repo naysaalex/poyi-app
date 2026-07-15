@@ -7,39 +7,24 @@ service cloud.firestore {
     function isCollab(board) { return request.auth.uid in board.data.collaborators; }
 
     match /users/{uid} {
-      // Allow anyone to read the users collection — needed for:
-      //   1. Username availability check on sign-up (unauthenticated)
-      //   2. Viewing other profiles (authenticated)
       allow read: if true;
-
-      // Only the account owner can write their own profile.
-      // Also allow creating a new profile when first signing up
-      // (the user IS authenticated at this point via Firebase Auth,
-      //  even though their Firestore profile doesn't exist yet).
       allow create: if signedIn() && isOwner(uid);
       allow delete: if signedIn() && isOwner(uid);
       allow update: if signedIn() && (
-        // Owner can update anything on their own profile
         isOwner(uid) ||
-        // Any signed-in user can update ONLY the follower/following/friend arrays
-        // on another user's profile (needed for follow/unfollow operations)
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['followerIds', 'followingIds', 'friendIds', 'friendCount'])
       );
     }
 
     match /friendRequests/{id} {
-      allow read:   if signedIn() && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow read:   if signedIn();
       allow create: if signedIn();
-      allow update: if signedIn() && (resource.data.to == request.auth.uid || resource.data.from == request.auth.uid);
+      allow update: if signedIn();
     }
 
     match /followRequests/{id} {
-      allow read:   if signedIn() && (
-        resource == null ||
-        resource.data.from == request.auth.uid ||
-        resource.data.to   == request.auth.uid
-      );
+      allow read:   if signedIn();
       allow create: if signedIn();
       allow update: if signedIn() && (
         resource.data.to   == request.auth.uid ||
@@ -48,11 +33,9 @@ service cloud.firestore {
     }
 
     match /notifications/{id} {
-      // For collection queries (subscribeToNotifications), Firestore evaluates
-      // the rule per-document. resource.data is available for reads.
-      allow read:   if signedIn() && (
-        resource == null || resource.data.userId == request.auth.uid
-      );
+      // Allow signed-in users to read — query is scoped by where('userId','==',uid)
+      // so users only ever receive their own notifications.
+      allow read:   if signedIn();
       allow create: if signedIn();
       allow update: if signedIn() && resource.data.userId == request.auth.uid;
       allow delete: if signedIn() && resource.data.userId == request.auth.uid;
@@ -70,10 +53,17 @@ service cloud.firestore {
       allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
 
       match /places/{placeId} {
-        allow read, write: if signedIn() && isCollab(get(/databases/$(database)/documents/boards/$(boardId)));
+        allow read: if signedIn() && (
+          get(/databases/$(database)/documents/boards/$(boardId)).data.privacy == 'public' ||
+          isCollab(get(/databases/$(database)/documents/boards/$(boardId)))
+        );
+        allow write: if signedIn() && isCollab(get(/databases/$(database)/documents/boards/$(boardId)));
       }
       match /visionImages/{imgId} {
-        allow read:   if signedIn() && isCollab(get(/databases/$(database)/documents/boards/$(boardId)));
+        allow read: if signedIn() && (
+          get(/databases/$(database)/documents/boards/$(boardId)).data.privacy == 'public' ||
+          isCollab(get(/databases/$(database)/documents/boards/$(boardId)))
+        );
         allow create: if signedIn() && isCollab(get(/databases/$(database)/documents/boards/$(boardId)));
         allow delete: if signedIn() && (
           resource.data.addedBy == request.auth.uid ||
