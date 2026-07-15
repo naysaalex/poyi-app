@@ -273,11 +273,19 @@ window.DB = {
 
   // ── NOTIFICATIONS ──────────────────────────────────────────
   subscribeToNotifications(uid, cb) {
+    // No orderBy — avoids needing a composite Firestore index. Sort client-side.
     return this.db.collection('notifications')
       .where('userId', '==', uid)
-      .orderBy('createdAt', 'desc')
       .limit(50)
-      .onSnapshot(snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+      .onSnapshot(snap => {
+        const notifs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        notifs.sort((a, b) => {
+          const ta = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+          const tb = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+          return tb - ta;
+        });
+        cb(notifs);
+      });
   },
 
   async markNotificationRead(notifId) {
