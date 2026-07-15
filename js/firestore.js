@@ -433,12 +433,20 @@ window.DB = {
       .limit(1).get();
     if (!existing.empty) return; // already invited
 
+    // Fetch board name so the recipient sees it without needing board read access
+    let boardName = '';
+    try {
+      const board = await this.getBoard(boardId);
+      boardName = board?.title || '';
+    } catch(e) {}
+
     await this.db.collection('notifications').add({
-      userId:  invitedUid,
-      type:    'boardInvite',
+      userId:    invitedUid,
+      type:      'boardInvite',
       boardId,
-      fromUid: inviterUid,
-      read:    false,
+      boardName,
+      fromUid:   inviterUid,
+      read:      false,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
   },
