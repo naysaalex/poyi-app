@@ -1286,13 +1286,21 @@ window.BoardDetailPage = {
         </div>
         <p class="bst-hint">${{public:'Anyone with this link can view.',friends:'Only your friends can view.',private:'Only collaborators can view.'}[board.privacy]}</p>
       </div>
-      <div class="bst-section">
+      <div class="bst-section" id="bst-collab-section">
         <div class="bst-section-title">Collaborators</div>
-        ${(board.collaborators||[]).map((uid,i) => `
-          <div class="collab-row">
-            <div class="collab-avatar" style="background:${UI.collabColor(i)}"></div>
-            <span class="collab-uid">${uid === board.ownerId ? 'Owner' : uid === window.currentUser?.uid ? 'You' : `Collaborator ${i+1}`}</span>
-          </div>`).join('')}
+        <div id="bst-collab-list"><p style="font-size:13px;color:var(--ink-40)">Loading…</p></div>
+        ${isOwner && board.privacy !== 'private' ? `
+          <div style="margin-top:12px;padding-top:12px;border-top:0.5px solid var(--ink-10)">
+            <p style="font-size:12px;color:var(--ink-60);margin-bottom:8px">Invite a friend to collaborate</p>
+            <div style="display:flex;gap:8px">
+              <div class="search-bar" style="flex:1">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                <input id="bst-collab-search" placeholder="Search friends…" autocomplete="off" />
+              </div>
+            </div>
+            <div id="bst-friend-results" style="margin-top:8px"></div>
+          </div>
+        ` : isOwner ? '<p style="font-size:12px;color:var(--ink-40);margin-top:8px">Change board privacy to invite collaborators.</p>' : ''}
       </div>
       ${isOwner ? `
       <div class="bst-section bst-danger">
@@ -1333,6 +1341,97 @@ window.BoardDetailPage = {
         }
         await window.DB.deleteBoard(board.id, window.currentUser.uid);
         window.App.navigate('boards');
+      };
+    }
+
+    // ── Load collaborators with real names ─────────────────
+    const collabListEl = el.querySelector('#bst-collab-list');
+    if (collabListEl) {
+      const collabUids = board.collaborators || [];
+      Promise.all(collabUids.map(uid => window.DB.getUserProfile(uid))).then(profiles => {
+        collabListEl.innerHTML = '';
+        profiles.filter(Boolean).forEach((prof, i) => {
+          const isOwnerRow = prof.uid === board.ownerId;
+          const isYou      = prof.uid === window.currentUser?.uid;
+          const row = document.createElement('div');
+          row.className = 'collab-row';
+          row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--ink-06)';
+          row.innerHTML = `
+            <div style="width:32px;height:32px;border-radius:50%;background:${UI.collabColor(i)};display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--white);font-weight:600;flex-shrink:0">
+              ${UI.initials(prof.displayName)}
+            </div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:500;color:var(--ink)">${prof.displayName || prof.handle || 'Unknown'}</div>
+              <div style="font-size:11px;color:var(--ink-40)">@${prof.handle || ''} ${isOwnerRow ? '· Owner' : isYou ? '· You' : ''}</div>
+            </div>
+            ${isOwner && !isOwnerRow ? `<button class="btn btn-sand btn-sm" data-remove="${prof.uid || prof.id}">Remove</button>` : ''}
+          `;
+          row.querySelector('[data-remove]')?.addEventListener('click', async (e) => {
+            const removeUid = e.target.dataset.remove;
+            if (!removeUid) return;
+            e.target.disabled = true; e.target.textContent = '…';
+            await window.DB.updateBoard(board.id, {
+              collaborators: (board.collaborators || []).filter(u => u !== removeUid),
+            });
+            row.remove();
+          });
+          collabListEl.appendChild(row);
+        });
+        if (!collabUids.length) {
+          collabListEl.innerHTML = '<p style="font-size:13px;color:var(--ink-40)">No collaborators yet.</p>';
+        }
+      });
+    }
+
+    // ── Friend search + invite ─────────────────────────────
+    const searchInput  = el.querySelector('#bst-collab-search');
+    const friendResult = el.querySelector('#bst-friend-results');
+    if (searchInput && friendResult && isOwner) {
+      let debounce = null;
+      searchInput.oninput = () => {
+        clearTimeout(debounce);
+        const q = searchInput.value.trim().toLowerCase();
+        if (!q) { friendResult.innerHTML = ''; return; }
+        debounce = setTimeout(async () => {
+          // Search only among friends (not all users)
+          const friends = await window.DB.getFriends(window.currentUser.uid);
+          const matches = friends.filter(f =>
+            (f.handle || '').toLowerCase().includes(q) ||
+            (f.displayName || '').toLowerCase().includes(q)
+          );
+          friendResult.innerHTML = '';
+          if (!matches.length) {
+            friendResult.innerHTML = '<p style="font-size:12px;color:var(--ink-40)">No friends match that search.</p>';
+            return;
+          }
+          matches.forEach(friend => {
+            const friendUid = friend.uid || friend.id;
+            const alreadyCollab = (board.collaborators || []).includes(friendUid);
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--ink-06)';
+            row.innerHTML = `
+              <div style="width:30px;height:30px;border-radius:50%;background:var(--clay-light);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--clay-dark);font-weight:600;flex-shrink:0">
+                ${UI.initials(friend.displayName)}
+              </div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:500;color:var(--ink)">${friend.displayName || friend.handle}</div>
+                <div style="font-size:11px;color:var(--ink-40)">@${friend.handle || ''}</div>
+              </div>
+              <button class="btn btn-clay btn-sm" ${alreadyCollab ? 'disabled' : ''}>
+                ${alreadyCollab ? 'Added ✓' : 'Invite'}
+              </button>`;
+            const inviteBtn = row.querySelector('button');
+            if (!alreadyCollab) {
+              inviteBtn.onclick = async () => {
+                inviteBtn.disabled = true; inviteBtn.textContent = '…';
+                await window.DB.inviteCollaborator(board.id, friendUid, window.currentUser.uid);
+                inviteBtn.textContent = 'Invited ✓';
+                UI.toast(`Invite sent to ${friend.displayName || friend.handle}!`, 'success');
+              };
+            }
+            friendResult.appendChild(row);
+          });
+        }, 300);
       };
     }
 

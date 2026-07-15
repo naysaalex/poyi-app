@@ -50,20 +50,22 @@ window.NotificationsPage = {
         const ts       = UI.timeAgo(n.createdAt);
 
         const typeColors = {
-          followRequest:  'var(--sky)',
-          followAccepted: 'var(--leaf)',
-          friendAccepted: 'var(--leaf)',
-          followed:       'var(--sky)',
-          boardInvite:    'var(--clay)',
+          followRequest:       'var(--sky)',
+          followAccepted:      'var(--leaf)',
+          friendAccepted:      'var(--leaf)',
+          followed:            'var(--sky)',
+          boardInvite:         'var(--clay)',
+          boardInviteAccepted: 'var(--leaf)',
         };
         const color = typeColors[n.type] || 'var(--ink-40)';
 
         const typeMessages = {
-          followRequest:  'sent you a follow request',
-          followAccepted: 'accepted your follow request',
-          friendAccepted: 'is now your friend — you follow each other! 🎉',
-          followed:       'started following you',
-          boardInvite:    'invited you to a trip board',
+          followRequest:       'sent you a follow request',
+          followAccepted:      'accepted your follow request',
+          friendAccepted:      'is now your friend — you follow each other! 🎉',
+          followed:            'started following you',
+          boardInvite:         'invited you to collaborate on a board',
+          boardInviteAccepted: `accepted your invite to join "${n.boardName || 'your board'}"`,
         };
         const msg = typeMessages[n.type] || '';
 
@@ -172,24 +174,58 @@ window.NotificationsPage = {
       actEl.innerHTML = '<span style="font-size:12px;color:var(--leaf);font-weight:500">Friends ✓</span>';
     }
 
+    // ── Board invite accepted (owner gets this) ─────────────
+    else if (n.type === 'boardInviteAccepted') {
+      const viewBtn = document.createElement('button');
+      viewBtn.className = 'btn btn-clay btn-sm';
+      viewBtn.textContent = 'View Board';
+      viewBtn.onclick = () => {
+        window.DB.markNotificationRead(n.id);
+        window.App.navigate('board-detail', { boardId: n.boardId });
+      };
+      actEl.appendChild(viewBtn);
+    }
+
     // ── Board invite ──────────────────────────────────────────
     else if (n.type === 'boardInvite') {
-      const join    = document.createElement('button');
-      const dismiss = document.createElement('button');
-      join.className    = 'btn btn-clay btn-sm';
-      join.textContent  = 'Join Board';
-      dismiss.className = 'btn btn-sand btn-sm';
-      dismiss.textContent = 'Dismiss';
+      (async () => {
+        // Check if already a collaborator
+        let boardName = 'a board';
+        try {
+          const board = await window.DB.getBoard(n.boardId);
+          if (board) boardName = board.title;
+          if (board && (board.collaborators || []).includes(window.currentUser.uid)) {
+            actEl.innerHTML = '<span style="font-size:12px;color:var(--leaf)">Already a collaborator ✓</span>';
+            return;
+          }
+        } catch(e) {}
 
-      join.onclick = async () => {
-        join.disabled = true; join.textContent = '…';
-        await window.DB.acceptBoardInvite(n.boardId, window.currentUser.uid, n.id);
-        actEl.innerHTML = '<span style="font-size:12px;color:var(--leaf)">Joined! ✓</span>';
-      };
-      dismiss.onclick = () => window.DB.markNotificationRead(n.id);
+        const join    = document.createElement('button');
+        const decline = document.createElement('button');
+        join.className    = 'btn btn-clay btn-sm';
+        join.textContent  = 'Accept';
+        decline.className = 'btn btn-sand btn-sm';
+        decline.textContent = 'Decline';
 
-      actEl.appendChild(join);
-      actEl.appendChild(dismiss);
+        join.onclick = async () => {
+          join.disabled = true; join.textContent = '…';
+          try {
+            await window.DB.acceptBoardInvite(n.boardId, window.currentUser.uid, n.id);
+            actEl.innerHTML = `<span style="font-size:12px;color:var(--leaf)">Joined "${boardName}" ✓</span>`;
+          } catch(e) {
+            join.disabled = false; join.textContent = 'Accept';
+            console.error('Accept board invite failed:', e);
+          }
+        };
+        decline.onclick = async () => {
+          decline.disabled = true;
+          await window.DB.markNotificationRead(n.id);
+          actEl.innerHTML = '<span style="font-size:12px;color:var(--ink-40)">Declined</span>';
+        };
+
+        actEl.appendChild(join);
+        actEl.appendChild(decline);
+      })();
     }
   },
 
