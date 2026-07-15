@@ -424,19 +424,48 @@ window.DB = {
   },
 
   async inviteCollaborator(boardId, invitedUid, inviterUid) {
+    // Check for existing pending invite to avoid duplicates
+    const existing = await this.db.collection('notifications')
+      .where('userId',  '==', invitedUid)
+      .where('type',    '==', 'boardInvite')
+      .where('boardId', '==', boardId)
+      .where('read',    '==', false)
+      .limit(1).get();
+    if (!existing.empty) return; // already invited
+
     await this.db.collection('notifications').add({
-      userId: invitedUid, type: 'boardInvite', boardId, fromUid: inviterUid,
-      read: false, createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      userId:  invitedUid,
+      type:    'boardInvite',
+      boardId,
+      fromUid: inviterUid,
+      read:    false,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
   },
 
   async acceptBoardInvite(boardId, uid, notifId) {
+    // Add to collaborators
     await this.db.collection('boards').doc(boardId).update({
       collaborators: firebase.firestore.FieldValue.arrayUnion(uid),
     });
+    // Mark notification read
     await this.db.collection('notifications').doc(notifId).update({
       read: true, status: 'accepted',
     });
+    // Notify the board owner that their invite was accepted
+    const board = await this.getBoard(boardId);
+    if (board && board.ownerId !== uid) {
+      const accepter = await this.getUserProfile(uid);
+      await this.db.collection('notifications').add({
+        userId:    board.ownerId,
+        type:      'boardInviteAccepted',
+        boardId,
+        fromUid:   uid,
+        boardName: board.title || 'your board',
+        read:      false,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    }
   },
 
   // ── PLACES ─────────────────────────────────────────────────
