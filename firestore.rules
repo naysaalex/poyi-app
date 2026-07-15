@@ -17,8 +17,15 @@ service cloud.firestore {
       // (the user IS authenticated at this point via Firebase Auth,
       //  even though their Firestore profile doesn't exist yet).
       allow create: if signedIn() && isOwner(uid);
-      allow update: if signedIn() && isOwner(uid);
       allow delete: if signedIn() && isOwner(uid);
+      allow update: if signedIn() && (
+        // Owner can update anything on their own profile
+        isOwner(uid) ||
+        // Any signed-in user can update ONLY the follower/following/friend arrays
+        // on another user's profile (needed for follow/unfollow operations)
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['followerIds', 'followingIds', 'friendIds', 'friendCount'])
+      );
     }
 
     match /friendRequests/{id} {
