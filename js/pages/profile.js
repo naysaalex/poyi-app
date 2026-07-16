@@ -1,4 +1,78 @@
 // js/pages/profile.js
+// ── Shared slide-up modal for followers / following lists ──────────────
+function openFollowModal(user, mode) {
+  const uid   = user.uid || user.id;
+  const title = mode === 'followers' ? 'Followers' : 'Following';
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(28,24,20,0.55);backdrop-filter:blur(4px);z-index:600;display:flex;align-items:flex-end;justify-content:center';
+
+  const sheet = document.createElement('div');
+  sheet.style.cssText = 'background:var(--cream);border-radius:24px 24px 0 0;width:100%;max-width:540px;max-height:80vh;display:flex;flex-direction:column;animation:slideUp 0.3s var(--ease) both';
+
+  sheet.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;padding:18px 20px 14px;border-bottom:0.5px solid var(--ink-10);flex-shrink:0">
+      <button id="fm-back" style="width:34px;height:34px;border-radius:50%;border:0.5px solid var(--ink-20);background:var(--white);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink-60);flex-shrink:0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <h2 style="font-family:var(--font-display);font-style:italic;font-weight:300;font-size:22px;color:var(--ink);flex:1">${title}</h2>
+    </div>
+    <div style="padding:10px 16px;border-bottom:0.5px solid var(--ink-06);flex-shrink:0">
+      <div class="search-bar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input id="fm-search" placeholder="Search…" autocomplete="off" />
+      </div>
+    </div>
+    <div id="fm-list" style="overflow-y:auto;flex:1;padding:8px 16px 24px;-webkit-overflow-scrolling:touch">
+      <p style="font-size:13px;color:var(--ink-40);padding:16px 4px">Loading…</p>
+    </div>`;
+
+  const close = () => overlay.remove();
+  sheet.querySelector('#fm-back').onclick = close;
+  overlay.onclick = e => { if (e.target === overlay) close(); };
+  overlay.appendChild(sheet);
+  document.body.appendChild(sheet);
+  // Wrap in overlay so backdrop click works
+  overlay.innerHTML = '';
+  overlay.appendChild(sheet);
+  document.body.appendChild(overlay);
+
+  const listEl   = sheet.querySelector('#fm-list');
+  const searchEl = sheet.querySelector('#fm-search');
+  let allUsers   = [];
+
+  const renderList = (filter) => {
+    const q = (filter || '').toLowerCase();
+    const filtered = q
+      ? allUsers.filter(u =>
+          (u.handle || '').toLowerCase().includes(q) ||
+          (u.displayName || '').toLowerCase().includes(q))
+      : allUsers;
+    listEl.innerHTML = '';
+    if (!filtered.length) {
+      listEl.innerHTML = `<p style="font-size:13px;color:var(--ink-40);padding:16px 4px">${q ? 'No results.' : 'No ' + mode + ' yet.'}</p>`;
+      return;
+    }
+    filtered.forEach(async u => {
+      const status = await window.DB.getFollowStatus(window.currentUser.uid, u.uid || u.id);
+      listEl.appendChild(window.ProfilePage.userRow(u, status));
+    });
+  };
+
+  const load = mode === 'followers'
+    ? window.DB.getFollowers(uid)
+    : window.DB.getFollowing(uid);
+
+  load.then(users => {
+    allUsers = users;
+    renderList('');
+    searchEl.oninput = () => renderList(searchEl.value);
+  });
+
+  // Focus search after animation
+  setTimeout(() => searchEl.focus(), 350);
+}
+
 window.ProfilePage = {
   unsubs: [],
   activeTab: 'boards',
@@ -80,17 +154,12 @@ window.ProfilePage = {
       };
     });
 
-    // Follower/following stats on own profile → switch to that tab
-    el.querySelector('#own-follower-stat').onclick = () => {
-      this.activeTab = 'followers';
-      el.querySelectorAll('.profile-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'followers'));
-      this.renderTab('followers', el.querySelector('#profile-content'));
-    };
-    el.querySelector('#own-following-stat').onclick = () => {
-      this.activeTab = 'following';
-      el.querySelectorAll('.profile-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'following'));
-      this.renderTab('following', el.querySelector('#profile-content'));
-    };
+    // Follower/following stats → open slide-up modal (same as other user profiles)
+    const ownUser = window.currentProfile || { uid: window.currentUser.uid };
+    el.querySelector('#own-follower-stat').onclick = () =>
+      openFollowModal(ownUser, 'followers');
+    el.querySelector('#own-following-stat').onclick = () =>
+      openFollowModal(ownUser, 'following');
 
     const boardUnsub = window.DB.subscribeToUserBoards(window.currentUser.uid, boards => {
       const c = document.getElementById('board-count');
@@ -619,9 +688,9 @@ window.UserProfilePage = {
 
     // Make follower/following counts open a slide-up modal
     el.querySelector('#up-follower-stat').onclick = () =>
-      this._openFollowModal(user, 'followers');
+      openFollowModal(user, 'followers');
     el.querySelector('#up-following-stat').onclick = () =>
-      this._openFollowModal(user, 'following');
+      openFollowModal(user, 'following');
 
     // Follow button + relation badge
     const followEl   = el.querySelector('#up-follow-action');

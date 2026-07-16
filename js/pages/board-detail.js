@@ -1390,13 +1390,16 @@ window.BoardDetailPage = {
                   : ''}
             `;
 
-            // Cancel pending invite
+            // Cancel pending invite: remove from board AND delete the notification
             row.querySelector('[data-cancel]')?.addEventListener('click', async (e) => {
               const uid2 = e.target.dataset.cancel;
               e.target.disabled = true; e.target.textContent = '…';
+              // Remove from pendingInvites on board
               await window.DB.updateBoard(board.id, {
                 pendingInvites: (board.pendingInvites || []).filter(u => u !== uid2),
               });
+              // Delete the boardInvite notification for this user
+              await window.DB.cancelBoardInviteNotification(board.id, uid2);
               row.remove();
             });
 
