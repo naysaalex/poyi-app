@@ -305,8 +305,8 @@
 .collab-check { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--ink-20); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--white); transition: all 0.15s; }
 .collab-check.on { background: var(--clay); border-color: var(--clay); }
 .aim-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; max-height: 360px; overflow-y: auto; margin-top: 8px; }
-.aim-img { border-radius: var(--radius-md); overflow: hidden; position: relative; cursor: pointer; background: var(--sand-deep); aspect-ratio: 1; display: block; }
-.aim-img img { width: 100%; height: 100%; object-fit: cover; display: block; position: absolute; inset: 0; transition: transform 0.2s; }
+.aim-img { border-radius: var(--radius-md); overflow: hidden; position: relative; cursor: pointer; background: var(--sand-deep); padding-top: 100%; display: block; height: 0; }
+.aim-img img { width: 100%; height: 100%; object-fit: cover; display: block; position: absolute; top: 0; left: 0; right: 0; bottom: 0; transition: transform 0.2s; }
 .aim-img:hover img { transform: scale(1.04); }
 .aim-img.added img { opacity: 0.55; }
 .aim-overlay { position: absolute; inset: 0; background: rgba(28,24,20,0.45); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; color: var(--white); opacity: 0; transition: opacity 0.18s; }
