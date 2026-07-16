@@ -292,10 +292,16 @@ window.DB = {
     await this.db.collection('notifications').doc(notifId).update({ read: true });
   },
 
-  async declineBoardInvite(notifId) {
+  async declineBoardInvite(notifId, boardId, uid) {
     await this.db.collection('notifications').doc(notifId).update({
       read: true, status: 'declined',
     });
+    // Remove from pendingInvites on the board
+    if (boardId && uid) {
+      await this.db.collection('boards').doc(boardId).update({
+        pendingInvites: firebase.firestore.FieldValue.arrayRemove(uid),
+      }).catch(() => {});
+    }
   },
 
   async markAllNotificationsRead(uid) {
@@ -429,28 +435,32 @@ window.DB = {
     return results;
   },
 
+  async leaveBoard(boardId, uid) {
+    await this.db.collection('boards').doc(boardId).update({
+      collaborators: firebase.firestore.FieldValue.arrayRemove(uid),
+    });
+  },
+
   async inviteCollaborator(boardId, invitedUid, inviterUid) {
-    // Check for existing pending invite to avoid duplicates
-    const existing = await this.db.collection('notifications')
-      .where('userId',  '==', invitedUid)
-      .where('type',    '==', 'boardInvite')
-      .where('boardId', '==', boardId)
-      .where('read',    '==', false)
-      .limit(1).get();
-    if (!existing.empty) return; // already invited
+    const board = await this.getBoard(boardId);
+    if (!board) return;
 
-    // Fetch board name so the recipient sees it without needing board read access
-    let boardName = '';
-    try {
-      const board = await this.getBoard(boardId);
-      boardName = board?.title || '';
-    } catch(e) {}
+    // Check already a collaborator or already invited
+    const collabs  = board.collaborators   || [];
+    const pending  = board.pendingInvites  || [];
+    if (collabs.includes(invitedUid) || pending.includes(invitedUid)) return;
 
+    // Add to pendingInvites on the board document — no index required
+    await this.db.collection('boards').doc(boardId).update({
+      pendingInvites: firebase.firestore.FieldValue.arrayUnion(invitedUid),
+    });
+
+    // Send notification with board name embedded
     await this.db.collection('notifications').add({
       userId:    invitedUid,
       type:      'boardInvite',
       boardId,
-      boardName,
+      boardName: board.title || '',
       fromUid:   inviterUid,
       read:      false,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -458,9 +468,10 @@ window.DB = {
   },
 
   async acceptBoardInvite(boardId, uid, notifId) {
-    // Add to collaborators
+    // Add to collaborators, remove from pendingInvites
     await this.db.collection('boards').doc(boardId).update({
-      collaborators: firebase.firestore.FieldValue.arrayUnion(uid),
+      collaborators:  firebase.firestore.FieldValue.arrayUnion(uid),
+      pendingInvites: firebase.firestore.FieldValue.arrayRemove(uid),
     });
     // Mark notification read
     await this.db.collection('notifications').doc(notifId).update({
