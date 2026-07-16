@@ -1349,44 +1349,73 @@ window.BoardDetailPage = {
       };
     }
 
-    // ── Load collaborators with real names ─────────────────
+    // ── Collaborators + pending invites ───────────────────
     const collabListEl = el.querySelector('#bst-collab-list');
     if (collabListEl) {
-      const collabUids = board.collaborators || [];
-      Promise.all(collabUids.map(uid => window.DB.getUserProfile(uid))).then(profiles => {
-        collabListEl.innerHTML = '';
-        profiles.filter(Boolean).forEach((prof, i) => {
-          const isOwnerRow = prof.uid === board.ownerId;
-          const isYou      = prof.uid === window.currentUser?.uid;
-          const row = document.createElement('div');
-          row.className = 'collab-row';
-          row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--ink-06)';
-          row.innerHTML = `
-            <div style="width:32px;height:32px;border-radius:50%;background:${UI.collabColor(i)};display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--white);font-weight:600;flex-shrink:0">
-              ${UI.initials(prof.displayName)}
-            </div>
-            <div style="flex:1;min-width:0">
-              <div style="font-size:13px;font-weight:500;color:var(--ink)">${prof.displayName || prof.handle || 'Unknown'}</div>
-              <div style="font-size:11px;color:var(--ink-40)">@${prof.handle || ''} ${isOwnerRow ? '· Owner' : isYou ? '· You' : ''}</div>
-            </div>
-            ${isOwner && !isOwnerRow ? `<button class="btn btn-sand btn-sm" data-remove="${prof.uid || prof.id}">Remove</button>` : ''}
-          `;
-          row.querySelector('[data-remove]')?.addEventListener('click', async (e) => {
-            const removeUid = e.target.dataset.remove;
-            if (!removeUid) return;
-            e.target.disabled = true; e.target.textContent = '…';
-            await window.DB.updateBoard(board.id, {
-              collaborators: (board.collaborators || []).filter(u => u !== removeUid),
+      const collabUids   = board.collaborators  || [];
+      const pendingUids  = board.pendingInvites || [];
+      const allUids      = [...new Set([...collabUids, ...pendingUids])];
+
+      if (!allUids.length) {
+        collabListEl.innerHTML = '<p style="font-size:13px;color:var(--ink-40)">No collaborators yet.</p>';
+      } else {
+        collabListEl.innerHTML = '<p style="font-size:13px;color:var(--ink-40)">Loading…</p>';
+        Promise.all(allUids.map(uid => window.DB.getUserProfile(uid))).then(profiles => {
+          collabListEl.innerHTML = '';
+          profiles.filter(Boolean).forEach((prof, i) => {
+            const profUid    = prof.uid || prof.id;
+            const isOwnerRow = profUid === board.ownerId;
+            const isYou      = profUid === window.currentUser?.uid;
+            const isPending  = pendingUids.includes(profUid) && !collabUids.includes(profUid);
+
+            const row = document.createElement('div');
+            row.className = 'collab-row';
+            row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--ink-06)';
+
+            const avatarColor = isPending ? 'var(--ink-20)' : UI.collabColor(i);
+
+            row.innerHTML = `
+              <div style="width:32px;height:32px;border-radius:50%;background:${avatarColor};display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--white);font-weight:600;flex-shrink:0">
+                ${UI.initials(prof.displayName)}
+              </div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:500;color:var(--ink)">${prof.displayName || prof.handle || 'Unknown'}</div>
+                <div style="font-size:11px;color:var(--ink-40)">@${prof.handle || ''}${isOwnerRow ? ' · Owner' : isYou ? ' · You' : ''}</div>
+              </div>
+              ${isPending
+                ? `<span style="font-size:11px;padding:2px 8px;border-radius:999px;background:var(--sand-deep);color:var(--ink-60);font-weight:500">Invite pending…</span>
+                   ${isOwner ? `<button class="btn btn-sand btn-sm" style="margin-left:4px" data-cancel="${profUid}">Cancel</button>` : ''}`
+                : isOwner && !isOwnerRow
+                  ? `<button class="btn btn-sand btn-sm" data-remove="${profUid}">Remove</button>`
+                  : ''}
+            `;
+
+            // Cancel pending invite
+            row.querySelector('[data-cancel]')?.addEventListener('click', async (e) => {
+              const uid2 = e.target.dataset.cancel;
+              e.target.disabled = true; e.target.textContent = '…';
+              await window.DB.updateBoard(board.id, {
+                pendingInvites: (board.pendingInvites || []).filter(u => u !== uid2),
+              });
+              row.remove();
             });
-            row.remove();
+
+            // Remove existing collaborator
+            row.querySelector('[data-remove]')?.addEventListener('click', async (e) => {
+              const uid2 = e.target.dataset.remove;
+              e.target.disabled = true; e.target.textContent = '…';
+              await window.DB.updateBoard(board.id, {
+                collaborators: (board.collaborators || []).filter(u => u !== uid2),
+              });
+              row.remove();
+            });
+
+            collabListEl.appendChild(row);
           });
-          collabListEl.appendChild(row);
         });
-        if (!collabUids.length) {
-          collabListEl.innerHTML = '<p style="font-size:13px;color:var(--ink-40)">No collaborators yet.</p>';
-        }
-      });
+      }
     }
+
 
     // ── Friend search + invite ─────────────────────────────
     const searchInput  = el.querySelector('#bst-collab-search');
