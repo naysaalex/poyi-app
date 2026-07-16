@@ -152,11 +152,9 @@ window.BoardDetailPage = {
         const wrap = document.createElement('div');
         wrap.className = 'vbt-img';
         wrap.innerHTML = `
-          <img src="${img.url}" loading="lazy" alt="" />
+          <img src="${img.url}" alt="" />
           ${(img.tags||[]).length ? `<div class="vbt-img-tags">${img.tags.slice(0,3).map(t=>`<span class="vbt-img-tag">${t}</span>`).join('')}</div>` : ''}
           ${canEdit ? `<button class="vbt-img-delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>` : ''}`;
-        const imgEl = wrap.querySelector('img');
-        imgEl.onload = () => imgEl.classList.add('loaded');
         wrap.querySelector('.vbt-img-delete')?.addEventListener('click', () => window.DB.deleteVisionImage(board.id, img.id));
         return wrap;
       }));
