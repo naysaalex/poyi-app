@@ -224,7 +224,7 @@ window.BoardDetailPage = {
       results.forEach(img => {
         const item = document.createElement('div');
         item.className = `aim-img ${added.has(img.id) ? 'added' : ''}`;
-        item.innerHTML = `<img src="${window.Unsplash.thumbUrl(img)}" loading="lazy" alt="${img.alt||''}" /><div class="aim-overlay">${added.has(img.id) ? '✓ Added' : '+ Add'}</div>`;
+        item.innerHTML = `<img src="${window.Unsplash.thumbUrl(img)}" alt="${img.alt||''}" /><div class="aim-overlay">${added.has(img.id) ? '✓ Added' : '+ Add'}</div>`;
         item.onclick = async () => {
           if (added.has(img.id)) return;
           const tags = content.querySelector('#aim-tags').value.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
