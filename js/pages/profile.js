@@ -617,6 +617,8 @@ window.ProfilePage = {
   // ── Navigate to another user's full profile page ────────────
   openUserProfile(user) {
     if (!user.uid && user.id) user.uid = user.id;
+    // Track current page so back arrow can return here
+    window._profileBackPage = window.App.currentPageId || 'profile';
     window.App.navigate('user-profile', { user });
   },
 };
@@ -675,7 +677,17 @@ window.UserProfilePage = {
       <div class="profile-content" id="up-content"></div>`;
 
     // Back button
-    el.querySelector('#up-back').onclick = () => window.App.navigate('profile');
+    el.querySelector('#up-back').onclick = () => {
+      // Always navigate explicitly — never use history.back() in an SPA
+      // Try to go back to where user came from, default to discover
+      if (window._profileBackPage) {
+        const dest = window._profileBackPage;
+        window._profileBackPage = null;
+        window.App.navigate(dest);
+      } else {
+        window.App.navigate('discover');
+      }
+    };
 
     // Load live profile for counts — numbers are clickable to open modal
     window.DB.subscribeToUser(user.uid, prof => {
@@ -782,8 +794,10 @@ window.UserProfilePage = {
             ${board.startDate ? `<p style="font-size:10px;color:var(--ink-40);margin-top:3px">${board.startDate}${board.endDate ? ' → ' + board.endDate : ''}</p>` : ''}
           </div>`;
         card.onclick = () => window.App.navigate('board-detail', {
-          boardId:  board.id,
-          viewOnly: !isSelf,
+          boardId:    board.id,
+          viewOnly:   !isSelf,
+          fromPage:   'user-profile',
+          fromParams: { user },
         });
         grid.appendChild(card);
       });

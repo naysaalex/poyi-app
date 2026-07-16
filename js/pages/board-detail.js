@@ -5,8 +5,10 @@ window.BoardDetailPage = {
 
   destroy() { this.unsubs.forEach(u => u()); this.unsubs = []; },
 
-  render({ boardId, viewOnly = false }) {
-    this._viewOnly = viewOnly;
+  render({ boardId, viewOnly = false, fromPage = null, fromParams = null }) {
+    this._viewOnly   = viewOnly;
+    this._fromPage   = fromPage;
+    this._fromParams = fromParams;
     const el = document.createElement('div');
     el.className = 'bdp';
     el.innerHTML = `
@@ -26,8 +28,14 @@ window.BoardDetailPage = {
       <div class="bdp-body" id="bdp-body"></div>`;
 
     el.querySelector('#bdp-back').onclick = () => {
-      if (this._viewOnly) window.history.back ? history.back() : window.App.navigate('discover');
-      else window.App.navigate('boards');
+      if (this._viewOnly) {
+        // viewOnly means we came from another user's profile — go back there
+        // Use the stored fromPage param, or fall back to discover
+        if (this._fromPage) window.App.navigate(this._fromPage, this._fromParams || {});
+        else window.App.navigate('discover');
+      } else {
+        window.App.navigate('boards');
+      }
     };
 
     const unsub = window.DB.subscribeToBoard(boardId, board => {
@@ -152,9 +160,11 @@ window.BoardDetailPage = {
         const wrap = document.createElement('div');
         wrap.className = 'vbt-img';
         wrap.innerHTML = `
-          <img src="${img.url}" alt="" />
+          <img src="${img.url}" loading="lazy" alt="" />
           ${(img.tags||[]).length ? `<div class="vbt-img-tags">${img.tags.slice(0,3).map(t=>`<span class="vbt-img-tag">${t}</span>`).join('')}</div>` : ''}
           ${canEdit ? `<button class="vbt-img-delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>` : ''}`;
+        const imgEl = wrap.querySelector('img');
+        imgEl.onload = () => imgEl.classList.add('loaded');
         wrap.querySelector('.vbt-img-delete')?.addEventListener('click', () => window.DB.deleteVisionImage(board.id, img.id));
         return wrap;
       }));
