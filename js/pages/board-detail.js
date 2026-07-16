@@ -1307,7 +1307,12 @@ window.BoardDetailPage = {
         <div class="bst-section-title">Danger Zone</div>
         <p class="bst-danger-desc">Deleting this board permanently removes all places, images, and itinerary data.</p>
         <button class="btn btn-danger btn-md" id="bst-delete">Delete Board</button>
-      </div>` : ''}`;
+      </div>` : `
+      <div class="bst-section bst-danger">
+        <div class="bst-section-title">Leave Board</div>
+        <p class="bst-danger-desc">You will lose access to this board and all its content.</p>
+        <button class="btn btn-danger btn-md" id="bst-leave">Leave Board</button>
+      </div>`}`;
 
     if (isOwner) {
       el.querySelector('#bst-privacy').appendChild(UI.privacySelect(privacy, v => { privacy = v; }));
@@ -1390,14 +1395,8 @@ window.BoardDetailPage = {
       let debounce = null;
 
       // Load pending invites for this board upfront to show status
-      let pendingInvites = new Set();
-      window.firebaseDb.collection('notifications')
-        .where('type',    '==', 'boardInvite')
-        .where('boardId', '==', board.id)
-        .where('read',    '==', false)
-        .get().then(snap => {
-          snap.docs.forEach(d => pendingInvites.add(d.data().userId));
-        }).catch(() => {});
+      // Read pendingInvites from board doc — no composite index needed
+      const pendingInvites = new Set(board.pendingInvites || []);
 
       searchInput.oninput = () => {
         clearTimeout(debounce);
@@ -1456,6 +1455,25 @@ window.BoardDetailPage = {
             friendResult.appendChild(row);
           });
         }, 300);
+      };
+    }
+
+    // Leave board (non-owner collaborators only)
+    const leaveBtn = el.querySelector('#bst-leave');
+    if (leaveBtn) {
+      let leaveConfirm = false;
+      leaveBtn.onclick = async () => {
+        if (!leaveConfirm) {
+          leaveConfirm = true;
+          leaveBtn.textContent = 'Click again to confirm';
+          setTimeout(() => {
+            if (leaveConfirm) { leaveConfirm = false; leaveBtn.textContent = 'Leave Board'; }
+          }, 4000);
+          return;
+        }
+        leaveBtn.disabled = true; leaveBtn.textContent = 'Leaving…';
+        await window.DB.leaveBoard(board.id, window.currentUser.uid);
+        window.App.navigate('boards');
       };
     }
 

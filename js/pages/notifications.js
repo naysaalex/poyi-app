@@ -222,7 +222,7 @@ window.NotificationsPage = {
       decline.onclick = async () => {
         decline.disabled = true; decline.textContent = '…';
         // Store status:'declined' so it persists across refreshes
-        await window.DB.declineBoardInvite(n.id);
+        await window.DB.declineBoardInvite(n.id, n.boardId, window.currentUser.uid);
         actEl.innerHTML = '<span style="font-size:12px;color:var(--ink-40)">Declined</span>';
       };
 
