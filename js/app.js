@@ -53,6 +53,8 @@ window.App = {
   },
 
   navigate(pageId, params = {}) {
+    // Track current page before navigating (used for back-button logic)
+    this.currentPageId = pageId;
     // Destroy current page if it has cleanup
     if (this.currentPage?.destroy) this.currentPage.destroy();
 
