@@ -292,6 +292,23 @@ window.DB = {
     await this.db.collection('notifications').doc(notifId).update({ read: true });
   },
 
+  async cancelBoardInviteNotification(boardId, invitedUid) {
+    // Find and delete the pending boardInvite notification for this user
+    // so they no longer see it in their notifications tab
+    try {
+      const snap = await this.db.collection('notifications')
+        .where('userId',  '==', invitedUid)
+        .where('type',    '==', 'boardInvite')
+        .where('boardId', '==', boardId)
+        .get();
+      const batch = this.db.batch();
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    } catch(e) {
+      console.warn('cancelBoardInviteNotification failed:', e.code);
+    }
+  },
+
   async declineBoardInvite(notifId, boardId, uid) {
     await this.db.collection('notifications').doc(notifId).update({
       read: true, status: 'declined',
