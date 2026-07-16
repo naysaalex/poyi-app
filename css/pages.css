@@ -111,10 +111,10 @@
 .vbt { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 .vbt-tags { display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto; padding: 10px 16px; border-bottom: 0.5px solid var(--ink-06); flex-shrink: 0; }
 .vbt-tags::-webkit-scrollbar { display: none; }
-.vbt-grid { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px; min-height: 0; }
+.vbt-grid { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px; }
 .vbt-img { position: relative; border-radius: var(--radius-md); overflow: hidden; cursor: pointer; background: var(--sand-deep); }
-/* Images start visible — no opacity trick which collapses layout height */
-.vbt-img img { width: 100%; height: auto; display: block; }
+.vbt-img img { width: 100%; display: block; opacity: 0; transition: opacity 0.35s; }
+.vbt-img img.loaded { opacity: 1; }
 .vbt-img-tags { position: absolute; bottom: 8px; left: 8px; display: flex; gap: 4px; flex-wrap: wrap; opacity: 0; transition: opacity 0.2s; }
 .vbt-img:hover .vbt-img-tags { opacity: 1; }
 .vbt-img-tag { font-size: 10px; padding: 2px 7px; border-radius: var(--radius-full); background: rgba(28,24,20,0.6); color: var(--cream); font-weight: 500; }
@@ -305,8 +305,8 @@
 .collab-check { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--ink-20); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--white); transition: all 0.15s; }
 .collab-check.on { background: var(--clay); border-color: var(--clay); }
 .aim-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; max-height: 360px; overflow-y: auto; margin-top: 8px; }
-.aim-img { border-radius: var(--radius-md); overflow: hidden; position: relative; cursor: pointer; background: var(--sand-deep); aspect-ratio: 1; }
-.aim-img img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.2s; }
+.aim-img { border-radius: var(--radius-md); overflow: hidden; position: relative; cursor: pointer; background: var(--sand-deep); aspect-ratio: 1; display: block; }
+.aim-img img { width: 100%; height: 100%; object-fit: cover; display: block; position: absolute; inset: 0; transition: transform 0.2s; }
 .aim-img:hover img { transform: scale(1.04); }
 .aim-img.added img { opacity: 0.55; }
 .aim-overlay { position: absolute; inset: 0; background: rgba(28,24,20,0.45); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; color: var(--white); opacity: 0; transition: opacity 0.18s; }
