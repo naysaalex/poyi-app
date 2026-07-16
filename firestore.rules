@@ -76,13 +76,22 @@ service cloud.firestore {
       allow read:   if signedIn() && canReadBoard(resource);
       allow create: if signedIn();
       allow update: if signedIn() && (
-        // Collaborators can update the board content
+        // Collaborators can update board content
         isCollab(resource) ||
-        // An invited user can add ONLY themselves to collaborators (accept invite)
+        // An invited user can accept: adds self to collaborators, removes self from pendingInvites
+        (request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['collaborators', 'pendingInvites'])
+          && request.auth.uid in request.resource.data.collaborators
+          && !(request.auth.uid in resource.data.collaborators)) ||
+        // A collaborator can leave: removes self from collaborators only
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['collaborators'])
-          && request.resource.data.collaborators.hasAll(resource.data.collaborators)
-          && request.resource.data.collaborators.size() == resource.data.collaborators.size() + 1
-          && request.auth.uid in request.resource.data.collaborators)
+          && request.auth.uid in resource.data.collaborators
+          && !(request.auth.uid in request.resource.data.collaborators)
+          && request.auth.uid != resource.data.ownerId) ||
+        // Owner can update pendingInvites (when inviting)
+        (resource.data.ownerId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['pendingInvites']))
       );
       allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
 
