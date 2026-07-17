@@ -113,8 +113,7 @@
 .vbt-tags::-webkit-scrollbar { display: none; }
 .vbt-grid { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px; }
 .vbt-img { position: relative; border-radius: var(--radius-md); overflow: hidden; cursor: pointer; background: var(--sand-deep); }
-.vbt-img img { width: 100%; display: block; opacity: 0; transition: opacity 0.35s; }
-.vbt-img img.loaded { opacity: 1; }
+.vbt-img img { width: 100%; height: auto; display: block; }
 .vbt-img-tags { position: absolute; bottom: 8px; left: 8px; display: flex; gap: 4px; flex-wrap: wrap; opacity: 0; transition: opacity 0.2s; }
 .vbt-img:hover .vbt-img-tags { opacity: 1; }
 .vbt-img-tag { font-size: 10px; padding: 2px 7px; border-radius: var(--radius-full); background: rgba(28,24,20,0.6); color: var(--cream); font-weight: 500; }
