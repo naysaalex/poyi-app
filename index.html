@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/globals.css?v=44" />
-  <link rel="stylesheet" href="css/auth.css?v=44" />
+  <link rel="stylesheet" href="css/globals.css?v=99" />
+  <link rel="stylesheet" href="css/auth.css?v=99" />
 
   <!--
     Firebase compat SDK — loaded in <head> so it is fully available
@@ -80,6 +80,16 @@
       }
     });
   </script>
+  <style>
+    /* Board row size — inline to bypass pages.css caching */
+    .board-row { height: 88px !important; min-height: unset !important; }
+    .board-row-thumb { width: 95px !important; }
+    .board-row-content { padding: 6px 14px !important; gap: 2px !important; }
+    .board-row-title { font-size: 16px !important; line-height: 1.2 !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }
+    .board-row-dests { font-size: 11px !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }
+    .board-row-meta { flex-wrap: nowrap !important; overflow: hidden !important; gap: 8px !important; }
+    .board-row-meta span { font-size: 10px !important; white-space: nowrap !important; }
+  </style>
 </head>
 <body>
 
@@ -219,16 +229,16 @@
     }
   });
 </script>
-<script src="js/firestore.js?v=44"></script>
-<script src="js/unsplash.js?v=44"></script>
-<script src="js/ui.js?v=44"></script>
-<script src="js/auth.js?v=44"></script>
-<script src="js/pages/discover.js?v=44"></script>
-<script src="js/pages/notifications.js?v=44"></script>
-<script src="js/pages/profile.js?v=44"></script>
-<script src="js/pages/boards.js?v=44"></script>
-<script src="js/pages/board-detail.js?v=44"></script>
-<script src="js/app.js?v=44"></script>
+<script src="js/firestore.js?v=99"></script>
+<script src="js/unsplash.js?v=99"></script>
+<script src="js/ui.js?v=99"></script>
+<script src="js/auth.js?v=99"></script>
+<script src="js/pages/discover.js?v=99"></script>
+<script src="js/pages/notifications.js?v=99"></script>
+<script src="js/pages/profile.js?v=99"></script>
+<script src="js/pages/boards.js?v=99"></script>
+<script src="js/pages/board-detail.js?v=99"></script>
+<script src="js/app.js?v=99"></script>
 
 </body>
 </html>
