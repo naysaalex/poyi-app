@@ -346,9 +346,24 @@ window.BoardDetailPage = {
     const buildLocPills = () => {
       const locsEl = el.querySelector('#pt-locs');
       locsEl.innerHTML = `<button class="pill ${filterLoc==='all'?'active':''}" data-loc="all">All</button>`
-        + (board.destinations||[]).map(d => `<button class="pill ${filterLoc===d?'active':''}" data-loc="${d}">${d}</button>`).join('');
-      locsEl.querySelectorAll('.pill').forEach(p => {
+        + (board.destinations||[]).map(d => `<button class="pill ${filterLoc===d?'active':''}" data-loc="${d}">${d}</button>`).join('')
+        + (canEdit ? `<button class="pill" id="pt-add-loc" style="border-style:dashed;color:var(--clay-dark);white-space:nowrap">+ Location</button>` : '');
+      locsEl.querySelectorAll('.pill[data-loc]').forEach(p => {
         p.onclick = () => { filterLoc = p.dataset.loc; buildLocPills(); renderPlaces(); };
+      });
+      locsEl.querySelector('#pt-add-loc')?.addEventListener('click', () => {
+        const loc = prompt('Add a new location:');
+        if (!loc?.trim()) return;
+        const locName = loc.trim();
+        const existing = board.destinations || [];
+        if (!existing.includes(locName)) {
+          window.DB.updateBoard(board.id, {
+            destinations: [...existing, locName],
+          }).then(() => {
+            board.destinations = [...existing, locName];
+            buildLocPills();
+          });
+        }
       });
     };
     buildLocPills();
