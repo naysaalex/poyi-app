@@ -103,6 +103,18 @@ window.BoardDetailPage = {
         tabsEl.appendChild(btn);
       });
 
+      // If vision board is off, never default to vision tab
+      if (!board.visionBoardOn && this.activeTab === 'vision') {
+        this.activeTab = 'places';
+      }
+      // If the stored activeTab isn't visible, fall back to first visible tab
+      const visibleTabs = tabs.filter(t => t.show);
+      if (!visibleTabs.find(t => t.id === this.activeTab)) {
+        this.activeTab = visibleTabs[0]?.id || 'places';
+        // Update active class on tab buttons
+        el.querySelectorAll('.tab-btn').forEach(b =>
+          b.classList.toggle('active', b.dataset.tab === this.activeTab));
+      }
       renderActiveTab(board);
     });
     this.unsubs.push(unsub);
@@ -352,18 +364,36 @@ window.BoardDetailPage = {
         p.onclick = () => { filterLoc = p.dataset.loc; buildLocPills(); renderPlaces(); };
       });
       locsEl.querySelector('#pt-add-loc')?.addEventListener('click', () => {
-        const loc = prompt('Add a new location:');
-        if (!loc?.trim()) return;
-        const locName = loc.trim();
-        const existing = board.destinations || [];
-        if (!existing.includes(locName)) {
-          window.DB.updateBoard(board.id, {
-            destinations: [...existing, locName],
-          }).then(() => {
+        const content = document.createElement('div');
+        content.style.cssText = 'display:flex;flex-direction:column;gap:12px';
+        content.innerHTML = `
+          <div class="field">
+            <label>Location name</label>
+            <input id="loc-name-input" placeholder="e.g. Kyoto, Day 3, Countryside…" />
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-sand btn-md" id="loc-cancel">Cancel</button>
+            <button class="btn btn-clay btn-md" id="loc-save">Add Location</button>
+          </div>`;
+        const { close } = UI.openModal({ title: 'add a location', size: 'sm', content });
+        const input = content.querySelector('#loc-name-input');
+        setTimeout(() => input.focus(), 50);
+        content.querySelector('#loc-cancel').onclick = close;
+        const doSave = async () => {
+          const locName = input.value.trim();
+          if (!locName) return;
+          const existing = board.destinations || [];
+          if (!existing.includes(locName)) {
+            await window.DB.updateBoard(board.id, {
+              destinations: [...existing, locName],
+            });
             board.destinations = [...existing, locName];
             buildLocPills();
-          });
-        }
+          }
+          close();
+        };
+        content.querySelector('#loc-save').onclick = doSave;
+        input.onkeydown = e => { if (e.key === 'Enter') doSave(); };
       });
     };
     buildLocPills();
