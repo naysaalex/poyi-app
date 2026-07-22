@@ -546,12 +546,57 @@ window.BoardDetailPage = {
         <div class="field"><label>Location</label>
           <select id="pf-loc">
             ${(board.destinations||[]).map(d=>`<option value="${d}" ${place.location===d?'selected':''}>${d}</option>`).join('')}
-            <option value="" ${!place.location?'selected':''}>General</option>
+            <option value="" ${!(place.location)||(board.destinations||[]).includes(place.location)?'':'selected'}>General</option>
+            <option value="__custom__">+ Add new location…</option>
           </select>
+          <input id="pf-loc-custom" placeholder="e.g. Kyoto" style="display:none;margin-top:6px;padding:9px 12px;border:1px solid var(--ink-20);border-radius:12px;font-family:var(--font-body);font-size:13px;width:100%;box-sizing:border-box;outline:none" value="${!(board.destinations||[]).includes(place.location)&&place.location?place.location:''}" />
         </div>
       </div>
       <div class="field"><label>Address <span class="optional">optional</span></label><input id="pf-addr" placeholder="2-3-1 Asakusa, Tokyo" value="${place.address||''}" /></div>
       <div class="field"><label>Notes <span class="optional">optional</span></label><textarea id="pf-notes" rows="3" placeholder="Best time to visit, tips...">${place.notes||''}</textarea></div>`;
+
+    // Wire custom location toggle after modal opens
+    const wireLocationSelect = (content) => {
+      const sel = content.querySelector('#pf-loc');
+      const customInput = content.querySelector('#pf-loc-custom');
+      if (!sel || !customInput) return;
+      // Show custom input if value is already custom (edit mode)
+      if (customInput.value) {
+        customInput.style.display = 'block';
+        sel.value = '__custom__';
+      }
+      sel.onchange = () => {
+        if (sel.value === '__custom__') {
+          customInput.style.display = 'block';
+          customInput.focus();
+        } else {
+          customInput.style.display = 'none';
+          customInput.value = '';
+        }
+      };
+    };
+
+    // Read the location value from the form (custom or selected)
+    const getLocationValue = (content) => {
+      const sel = content.querySelector('#pf-loc');
+      if (sel.value === '__custom__') {
+        const custom = content.querySelector('#pf-loc-custom').value.trim();
+        return custom || 'General';
+      }
+      return sel.value || 'General';
+    };
+
+    // After saving a new custom location, add it to board.destinations
+    const saveNewDestination = async (locationValue) => {
+      if (!locationValue || locationValue === 'General') return;
+      const existing = board.destinations || [];
+      if (!existing.includes(locationValue)) {
+        await window.DB.updateBoard(board.id, {
+          destinations: [...existing, locationValue],
+        });
+        board.destinations = [...existing, locationValue]; // update local ref
+      }
+    };
 
     const openAddPlace = () => {
       const content = document.createElement('div');
@@ -562,14 +607,17 @@ window.BoardDetailPage = {
           <button class="btn btn-clay btn-md" id="pf-save">Add Place</button>
         </div>`;
       const { close } = UI.openModal({ title: 'add a place', size: 'sm', content });
+      wireLocationSelect(content);
       content.querySelector('#pf-cancel').onclick = close;
       content.querySelector('#pf-save').onclick = async () => {
         const name = content.querySelector('#pf-name').value.trim();
         if (!name) return;
+        const location = getLocationValue(content);
+        await saveNewDestination(location);
         await window.DB.addPlace(board.id, {
           name,
           category: content.querySelector('#pf-cat').value,
-          location: content.querySelector('#pf-loc').value,
+          location,
           address:  content.querySelector('#pf-addr').value,
           notes:    content.querySelector('#pf-notes').value,
         });
@@ -586,18 +634,20 @@ window.BoardDetailPage = {
           <button class="btn btn-clay btn-md" id="pf-save">Save Changes</button>
         </div>`;
       const { close } = UI.openModal({ title: 'edit place', size: 'sm', content });
+      wireLocationSelect(content);
       content.querySelector('#pf-cancel').onclick = close;
       content.querySelector('#pf-save').onclick = async () => {
         const name = content.querySelector('#pf-name').value.trim();
         if (!name) return;
-        // compat SDK update for subcollection
+        const location = getLocationValue(content);
+        await saveNewDestination(location);
         await window.firebaseDb
           .collection('boards').doc(board.id)
           .collection('places').doc(place.id)
           .update({
             name,
             category: content.querySelector('#pf-cat').value,
-            location: content.querySelector('#pf-loc').value,
+            location,
             address:  content.querySelector('#pf-addr').value,
             notes:    content.querySelector('#pf-notes').value,
           });
