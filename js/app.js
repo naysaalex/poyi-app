@@ -95,7 +95,7 @@ window.App = {
 
       case 'board-detail':
         pageObj = window.BoardDetailPage;
-        pageObj.activeTab = 'vision';
+        pageObj.activeTab = pageObj.activeTab || 'places'; // resolved per-board
         el = pageObj.render(params);
         break;
 
